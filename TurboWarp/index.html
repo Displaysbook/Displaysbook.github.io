@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Scratch Blocks Visualizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        #scratch-blocks-container, #sprites-container, #costumes-container, #sounds-container, #variables-container, #lists-container, #extensions-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .scratch-block, .sprite, .costume, .sound, .variable, .list, .extension {
+            display: inline-block;
+            margin: 5px;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .scratch-block {
+            color: white;
+        }
+
+        /* Block types styling */
+        .motion { background-color: #4C97FF; }
+        .looks { background-color: #9966FF; }
+        .control { background-color: #FFAB19; }
+        .event { background-color: #FFD500; }
+        .sensing { background-color: #5CB1D6; }
+        .operators { background-color: #59C059; }
+        .sound { background-color: #D65CD6; }
+        .variable { background-color: #FF8C1A; }
+        .custom { background-color: #FF6680; }
+        .pen { background-color: #0fBD8C; }
+        .videoSensing { background-color: #774DDB; }
+        .text2speech { background-color: #FFBF00; }
+        .translate { background-color: #2E8EB8; }
+        .music { background-color: #00CFCA; }
+        .extension { background-color: #E0E0E0; }
+        .undefined { background-color: #CCCCCC; }
+
+        .sprite { background-color: #F0F0F0; border: 1px solid #CCCCCC; }
+        .background { background-color: #D0E8FF; border: 1px solid #A0C8FF; }
+        .costume { background-color: #C1FFC1; }
+        .sound { background-color: #FFB6C1; }
+        .variable { background-color: #FFCC99; }
+        .list { background-color: #CCFFCC; }
+        .extension { background-color: #E0E0E0; }
+
+        .scratch-block:hover {
+            cursor: pointer;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Enhanced Scratch Blocks Visualizer</h1>
+    <input type="file" id="sb3-file-input" accept=".sb3">
+    <button id="capture-btn">Capture Screenshot</button>
+    
+    <div id="scratch-blocks-container"></div>
+    <div id="sprites-container"></div>
+    <div id="costumes-container"></div>
+    <div id="sounds-container"></div>
+    <div id="variables-container"></div>
+    <div id="lists-container"></div>
+    <div id="extensions-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.0/html2canvas.min.js"></script>
+    <script>
+        document.getElementById('sb3-file-input').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                loadSb3File(file);
+            }
+        });
+
+        document.getElementById('capture-btn').addEventListener('click', function() {
+            html2canvas(document.body).then(canvas => {
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = 'screenshot.png';
+                link.click();
+            });
+        });
+
+        function loadSb3File(file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                JSZip.loadAsync(event.target.result).then(zip => {
+                    return zip.file("project.json").async("text");
+                }).then(data => {
+                    const projectJson = JSON.parse(data);
+                    visualizeBlocks(projectJson);
+                    visualizeSprites(projectJson);
+                }).catch(error => {
+                    console.error("Error loading .sb3 file:", error);
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function visualizeBlocks(projectJson) {
+            const container = document.getElementById('scratch-blocks-container');
+            container.innerHTML = ''; // Clear container
+
+            projectJson.targets.forEach(target => {
+                if (target.blocks) {
+                    const targetBlocksContainer = document.createElement('div');
+                    targetBlocksContainer.className = 'target-blocks';
+                    targetBlocksContainer.innerHTML = `<h2>${target.name}'s Blocks</h2>`;
+                    container.appendChild(targetBlocksContainer);
+
+                    for (let blockId in target.blocks) {
+                        const block = target.blocks[blockId];
+                        const blockElement = createBlockElement(block);
+                        targetBlocksContainer.appendChild(blockElement);
+                        
+                        // Handle nested blocks
+                        if (block.next) {
+                            appendNextBlock(target.blocks, block.next, blockElement);
+                        }
+                    }
+                }
+            });
+        }
+
+        function appendNextBlock(blocks, nextBlockId, parentElement) {
+            const nextBlock = blocks[nextBlockId];
+            if (nextBlock) {
+                const nextBlockElement = createBlockElement(nextBlock);
+                parentElement.appendChild(nextBlockElement);
+                if (nextBlock.next) {
+                    appendNextBlock(blocks, nextBlock.next, nextBlockElement);
+                }
+            }
+        }
+
+        function createBlockElement(block) {
+            const blockElement = document.createElement('div');
+            blockElement.className = 'scratch-block ' + getBlockTypeClass(block.opcode);
+        
+            // Display block opcode and parameters
+            let blockText = block.opcode;
+        
+            // Add fields (e.g., text or number inputs)
+            if (block.fields) {
+                for (let fieldName in block.fields) {
+                    blockText += ` ${block.fields[fieldName][0]}`;
+                }
+            }
+        
+            // Add inputs (e.g., other blocks connected to this block)
+            if (block.inputs) {
+                for (let inputName in block.inputs) {
+                    const inputBlockId = block.inputs[inputName][1];
+                    if (inputBlockId) {
+                        blockText += ` [${inputBlockId}]`;
+                    }
+                }
+            }
+
+            blockElement.textContent = blockText;
+            return blockElement;
+        }
+
+
+        function getBlockTypeClass(opcode) {
+            // Map opcode to block type
+            if (opcode.startsWith('motion_')) return 'motion';
+            if (opcode.startsWith('looks_')) return 'looks';
+            if (opcode.startsWith('control_')) return 'control';
+            if (opcode.startsWith('event_')) return 'event';
+            if (opcode.startsWith('sensing_')) return 'sensing';
+            if (opcode.startsWith('operator_')) return 'operators';
+            if (opcode.startsWith('sound_')) return 'sound';
+            if (opcode.startsWith('data_') || opcode.startsWith('variables_')) return 'variable';
+            if (opcode.startsWith('procedures_')) return 'custom'; // Custom block
+            if (opcode.startsWith('music_')) return 'music'; // Music extension
+            if (opcode.startsWith('pen_')) return 'pen'; // Pen extension
+            if (opcode.startsWith('videoSensing_')) return 'videoSensing'; // Video Sensing extension
+            if (opcode.startsWith('text2speech_')) return 'text2speech'; // Text to Speech extension
+            if (opcode.startsWith('translate_')) return 'translate'; // Translate extension
+            return 'undefined'; // Unknown type
+        }
+
+        function visualizeSprites(projectJson) {
+            const targets = projectJson.targets;
+            const spritesContainer = document.getElementById('sprites-container');
+            const costumesContainer = document.getElementById('costumes-container');
+            const soundsContainer = document.getElementById('sounds-container');
+            const variablesContainer = document.getElementById('variables-container');
+            const listsContainer = document.getElementById('lists-container');
+            const extensionsContainer = document.getElementById('extensions-container');
+
+            spritesContainer.innerHTML = '';
+            costumesContainer.innerHTML = '';
+            soundsContainer.innerHTML = '';
+            variablesContainer.innerHTML = '';
+            listsContainer.innerHTML = '';
+            extensionsContainer.innerHTML = '';
+
+            targets.forEach(target => {
+                // Process sprites and backgrounds
+                const spriteElement = document.createElement('div');
+                spriteElement.className = 'sprite';
+                spriteElement.textContent = target.name;
+                if (target.isStage) {
+                    spriteElement.classList.add('background');
+                    spriteElement.textContent += ' (Background)';
+                }
+                spritesContainer.appendChild(spriteElement);
+
+                // Process costumes
+                target.costumes.forEach(costume => {
+                    const costumeElement = document.createElement('div');
+                    costumeElement.className = 'costume';
+                    costumeElement.textContent = costume.name;
+                    costumesContainer.appendChild(costumeElement);
+                });
+
+                // Process sounds
+                target.sounds.forEach(sound => {
+                    const soundElement = document.createElement('div');
+                    soundElement.className = 'sound';
+                    soundElement.textContent = sound.name;
+                    soundsContainer.appendChild(soundElement);
+                });
+
+                // Process variables
+                if (target.variables) {
+                    for (let variableName in target.variables) {
+                        const variableElement = document.createElement('div');
+                        variableElement.className = 'variable';
+                        variableElement.textContent = variableName;
+                        variablesContainer.appendChild(variableElement);
+                    }
+                }
+
+                // Process lists
+                if (target.lists) {
+                    for (let listName in target.lists) {
+                        const listElement = document.createElement('div');
+                        listElement.className = 'list';
+                        listElement.textContent = listName;
+                        listsContainer.appendChild(listElement);
+                    }
+                }
+            });
+
+            // Process extensions
+            if (projectJson.meta && projectJson.meta.extensions) {
+                projectJson.meta.extensions.forEach(extension => {
+                    const extensionElement = document.createElement('div');
+                    extensionElement.className = 'extension';
+                    extensionElement.textContent = extension;
+                    extensionsContainer.appendChild(extensionElement);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
