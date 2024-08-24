@@ -11,7 +11,7 @@ class ReplaceCanvasWithIframe {
                     arguments: {
                         URL: {
                             type: Scratch.ArgumentType.STRING,
-                            defaultValue: 'https://www.ccw.site/'
+                            defaultValue: 'https://displaysbook.xyz/'
                         }
                     }
                 }
