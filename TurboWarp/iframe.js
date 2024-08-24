@@ -11,7 +11,7 @@ class ReplaceCanvasWithIframe {
                     arguments: {
                         URL: {
                             type: Scratch.ArgumentType.STRING,
-                            defaultValue: 'https://displaysbook.xyz/'
+                            defaultValue: 'https://www.ccw.site/'
                         }
                     }
                 }
@@ -32,8 +32,6 @@ class ReplaceCanvasWithIframe {
                 // 创建新的 <iframe> 元素
                 const newIframe = document.createElement('iframe');
                 newIframe.src = URL;
-                newIframe.style.width = '100%';
-                newIframe.style.height = '100%';
                 newIframe.style.border = 'none';
                 newIframe.style.position = 'absolute';
                 newIframe.style.top = '0';
@@ -43,8 +41,8 @@ class ReplaceCanvasWithIframe {
                 const parent = canvas.parentNode;
                 if (parent) {
                     // 设置 <iframe> 的宽度和高度以适应父节点
-                    newIframe.style.width = `${parent.offsetWidth}px`;
-                    newIframe.style.height = `${parent.offsetHeight}px`;
+                    newIframe.style.width = '100%';
+                    newIframe.style.height = '100%';
 
                     // 用新的 <iframe> 替换 <canvas>
                     parent.replaceChild(newIframe, canvas);
@@ -60,8 +58,11 @@ class ReplaceCanvasWithIframe {
         window.addEventListener('resize', function() {
             const iframes = document.querySelectorAll('iframe');
             iframes.forEach(iframe => {
-                iframe.style.width = '100%';
-                iframe.style.height = '100%';
+                const parent = iframe.parentNode;
+                if (parent) {
+                    iframe.style.width = `${parent.offsetWidth}px`;
+                    iframe.style.height = `${parent.offsetHeight}px`;
+                }
             });
         });
 
