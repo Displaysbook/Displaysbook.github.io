@@ -1,0 +1,109 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>贪吃蛇游戏</title>
+<style type="text/css">
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+    }
+    #game-board {
+        width: 300px;
+        height: 300px;
+        border: 1px solid #000;
+        position: relative;
+    }
+    .snake {
+        width: 20px;
+        height: 20px;
+        background-color: green;
+        position: absolute;
+    }
+    .food {
+        width: 20px;
+        height: 20px;
+        background-color: red;
+        position: absolute;
+    }
+</style>
+<script type="text/javascript">
+    var snake;
+    var food;
+    var direction;
+    var gameInterval;
+
+    function startGame() {
+        snake = [{x: 5, y: 5}];
+        food = {x: 10, y: 10};
+        direction = "right";
+        gameInterval = setInterval(updateGame, 100);
+    }
+
+    function updateGame() {
+        var headX = snake[0].x;
+        var headY = snake[0].y;
+
+        if (direction === "right") {
+            headX++;
+        } else if (direction === "left") {
+            headX--;
+        } else if (direction === "up") {
+            headY--;
+        } else if (direction === "down") {
+            headY++;
+        }
+
+        if (headX === food.x && headY === food.y) {
+            snake.push({x: headX, y: headY});
+            food.x = Math.floor(Math.random() * 15);
+            food.y = Math.floor(Math.random() * 15);
+        } else {
+            var tail = snake.pop();
+            tail.x = headX;
+            tail.y = headY;
+            snake.unshift(tail);
+        }
+
+        var gameBoard = document.getElementById("game-board");
+        gameBoard.innerHTML = "";
+
+        for (var i = 0; i < snake.length; i++) {
+            var segment = document.createElement("div");
+            segment.className = "snake";
+            segment.style.left = snake[i].x * 20 + "px";
+            segment.style.top = snake[i].y * 20 + "px";
+            gameBoard.appendChild(segment);
+        }
+
+        var foodElement = document.createElement("div");
+        foodElement.className = "food";
+        foodElement.style.left = food.x * 20 + "px";
+        foodElement.style.top = food.y * 20 + "px";
+        gameBoard.appendChild(foodElement);
+
+        if (headX < 0 || headX >= 15 || headY < 0 || headY >= 15) {
+            clearInterval(gameInterval);
+            alert("Game over! Your score: " + snake.length);
+        }
+    }
+
+    function changeDirection(event) {
+        var key = event.keyCode;
+        if (key === 37 && direction !== "right") {
+            direction = "left";
+        } else if (key === 38 && direction !== "down") {
+            direction = "up";
+        } else if (key === 39 && direction !== "left") {
+            direction = "right";
+        } else if (key === 40 && direction !== "up") {
+            direction = "down";
+        }
+    }
+</script>
+</head>
+<body onload="startGame()" onkeydown="changeDirection(event)">
+<h1>贪吃蛇游戏</h1>
+<div id="game-board"></div>
+</body>
+</html>
