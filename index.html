@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ActiveX Example</title>
+    <title>ActiveX Window Example</title>
     <script type="text/javascript">
-        function readFile() {
+        function createWindow() {
             try {
-                var fso = new ActiveXObject("Scripting.FileSystemObject");
-                var file = fso.OpenTextFile("C:\\example.txt", 1);
-                var content = file.ReadAll();
-                file.Close();
-                alert("File Content: " + content);
+                // 创建 ActiveX 控件的实例
+                var shell = new ActiveXObject("WScript.Shell");
+                // 使用 WScript.Shell 的 Popup 方法创建一个消息窗口
+                shell.Popup("Hello, this is a window created using ActiveX!", 5, "ActiveX Window", 64);
             } catch (e) {
                 alert("ActiveX is not enabled or an error occurred: " + e.message);
             }
@@ -17,7 +16,7 @@
     </script>
 </head>
 <body>
-    <h1>ActiveX Example</h1>
-    <button onclick="readFile()">Read File using ActiveX</button>
+    <h1>ActiveX Window Example</h1>
+    <button onclick="createWindow()">Create Window using ActiveX</button>
 </body>
 </html>
