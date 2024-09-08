@@ -1,1 +1,23 @@
-1145141919
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ActiveX Example</title>
+    <script type="text/javascript">
+        function readFile() {
+            try {
+                var fso = new ActiveXObject("Scripting.FileSystemObject");
+                var file = fso.OpenTextFile("C:\\example.txt", 1);
+                var content = file.ReadAll();
+                file.Close();
+                alert("File Content: " + content);
+            } catch (e) {
+                alert("ActiveX is not enabled or an error occurred: " + e.message);
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>ActiveX Example</h1>
+    <button onclick="readFile()">Read File using ActiveX</button>
+</body>
+</html>
