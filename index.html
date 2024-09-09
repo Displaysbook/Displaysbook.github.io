@@ -1,40 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ActiveX 顶置窗口示例</title>
-    <style>
-        #topmostWindow {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 300px;
-            height: 200px;
-            border: 1px solid black;
-            background-color: #f0f0f0;
-            z-index: 9999; /* 确保窗口在所有其他内容之上 */
-        }
-    </style>
-</head>
-<body>
-    <div id="topmostWindow">
-        <p>这是一个顶置窗口</p>
-    </div>
-
+    <title>ActiveX Window Example</title>
     <script type="text/javascript">
-        function createActiveXWindow() {
+        function createWindow() {
             try {
-                var activeXControl = new ActiveXObject('SomeActiveXControl.ClassName');
-                // 创建并显示顶置窗口的逻辑
-                // 这通常取决于 ActiveX 控件的功能
+                // 创建 ActiveX 控件的实例
+                var shell = new ActiveXObject("WScript.Shell");
+                // 使用 WScript.Shell 的 Popup 方法创建一个消息窗口
+                shell.Popup("Hello, this is a window created using ActiveX!", 5, "ActiveX Window", 64);
             } catch (e) {
-                alert('ActiveX 控件无法创建: ' + e.message);
+                alert("ActiveX is not enabled or an error occurred: " + e.message);
             }
         }
-
-        // 确保在页面加载后创建 ActiveX 控件窗口
-        window.onload = function() {
-            createActiveXWindow();
-        };
     </script>
+</head>
+<body>
+    <h1>ActiveX Window Example</h1>
+    <button onclick="createWindow()">Create Window using ActiveX</button>
 </body>
 </html>
