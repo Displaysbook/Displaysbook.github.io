@@ -1,31 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Desktop Capture with Audio Visualization</title>
+    <title>Audio Visualization Example</title>
     <style>
-        #canvas {
+        canvas {
             border: 1px solid black;
+            display: block;
+            margin: 0 auto;
         }
     </style>
 </head>
 <body>
-    <h1>Desktop Capture with Audio Visualization</h1>
+    <h1>Audio Visualization Example</h1>
     <video id="video" width="640" height="480" autoplay></video>
-    <canvas id="canvas" width="640" height="100"></canvas>
     <button id="start">Start Capture</button>
     <button id="stop">Stop Capture</button>
+    <canvas id="canvas" width="640" height="100"></canvas>
 
     <script>
         const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
         const startButton = document.getElementById('start');
         const stopButton = document.getElementById('stop');
+        const canvas = document.getElementById('canvas');
+        const canvasContext = canvas.getContext('2d');
         let mediaStream = null;
         let audioContext = null;
         let analyser = null;
-        let bufferLength = null;
-        let dataArray = null;
+        let source = null;
 
         startButton.addEventListener('click', async () => {
             try {
@@ -35,17 +36,47 @@
                 });
                 video.srcObject = mediaStream;
 
-                // Initialize Web Audio API
+                // Initialize audio context and analyser
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioContext.createMediaStreamSource(mediaStream);
+                source = audioContext.createMediaStreamSource(mediaStream);
                 analyser = audioContext.createAnalyser();
                 source.connect(analyser);
+                analyser.fftSize = 2048;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
 
-                bufferLength = analyser.frequencyBinCount;
-                dataArray = new Uint8Array(bufferLength);
+                // Function to draw the waveform
+                function draw() {
+                    requestAnimationFrame(draw);
+                    analyser.getByteTimeDomainData(dataArray);
 
-                // Start visualization
+                    canvasContext.fillStyle = 'rgb(200, 200, 200)';
+                    canvasContext.fillRect(0, 0, canvas.width, canvas.height);
+
+                    canvasContext.lineWidth = 2;
+                    canvasContext.strokeStyle = 'rgb(0, 0, 0)';
+                    canvasContext.beginPath();
+
+                    const sliceWidth = canvas.width * 1.0 / bufferLength;
+                    let x = 0;
+
+                    for (let i = 0; i < bufferLength; i++) {
+                        const v = dataArray[i] / 128.0; // normalize value
+                        const y = v * canvas.height / 2;
+                        if (i === 0) {
+                            canvasContext.moveTo(x, y);
+                        } else {
+                            canvasContext.lineTo(x, y);
+                        }
+                        x += sliceWidth;
+                    }
+
+                    canvasContext.lineTo(canvas.width, canvas.height / 2);
+                    canvasContext.stroke();
+                }
+
                 draw();
+
             } catch (err) {
                 console.error('Error: ' + err);
             }
@@ -57,32 +88,10 @@
                 video.srcObject = null;
                 if (audioContext) {
                     audioContext.close();
-                    audioContext = null;
                 }
-                analyser = null;
-                dataArray = null;
+                mediaStream = null;
             }
         });
-
-        function draw() {
-            if (!analyser) return;
-
-            analyser.getByteFrequencyData(dataArray);
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const barWidth = (canvas.width / bufferLength) * 2.5;
-            let barHeight;
-            let x = 0;
-
-            for (let i = 0; i < bufferLength; i++) {
-                barHeight = dataArray[i];
-                ctx.fillStyle = 'rgb(' + (barHeight + 100) + ',50,50)';
-                ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
-                x += barWidth + 1;
-            }
-
-            requestAnimationFrame(draw);
-        }
     </script>
 </body>
 </html>
