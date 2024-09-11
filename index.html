@@ -13,9 +13,13 @@
 <body>
     <h1>Desktop Audio Visualization Example</h1>
     <canvas id="audioCanvas" width="800" height="400"></canvas>
-    <button onclick="startDesktopAudioVisualization()">Start Visualization</button>
 
     <script>
+        // 在页面加载时自动启动音频可视化
+        window.onload = function() {
+            startDesktopAudioVisualization();
+        };
+
         async function startDesktopAudioVisualization() {
             try {
                 // 捕获屏幕共享，包括音频
