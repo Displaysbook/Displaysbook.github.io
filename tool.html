@@ -55,7 +55,7 @@
     <div class="container">
         <h1>校验码计算器</h1>
         <label for="code">输入代码（12位数字）：</label><br>
-        <input type="text" id="code" maxlength="12" placeholder="例如: 690123456789"><br>
+        <input type="text" id="code" maxlength="12" placeholder="例如: 697819731001"><br>
         <label for="wrapper">包装指示符：</label>
         <select id="wrapper">
             <option value="0" selected>0</option>
@@ -170,7 +170,7 @@
             const wrapperSelect = document.getElementById("wrapper");
             codeInput.addEventListener("input", calculateChecksum);
             wrapperSelect.addEventListener("change", calculateChecksum);
-            codeInput.value = "690123456789"; // 设置一个默认值
+            codeInput.value = "697819731001"; // 设置一个默认值
             calculateChecksum(); // 自动计算
         };
     </script>
