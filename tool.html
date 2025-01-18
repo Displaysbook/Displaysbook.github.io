@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校验码计算</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+        .container {
+            text-align: center;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        input {
+            margin: 5px 0;
+            padding: 5px;
+            width: 200px;
+        }
+        select {
+            margin: 5px;
+            padding: 5px;
+        }
+        button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #result {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .copy-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: center;
+        }
+        #barcode {
+            margin-top: 20px;
+        }
+    </style>
+    <script src="JsBarcode.all.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>校验码计算器</h1>
+        <label for="code">输入代码（12位数字）：</label><br>
+        <input type="text" id="code" maxlength="12" placeholder="例如: 690123456789"><br>
+        <label for="wrapper">包装指示符：</label>
+        <select id="wrapper">
+            <option value="0" selected>0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+        </select><br>
+        <button onclick="calculateChecksum()">计算校验码</button>
+
+        <div id="result"></div>
+        <div class="copy-container" id="copy-container" style="display: none;">
+            <span id="full-code"></span>
+            <button onclick="copyToClipboard()">复制</button>
+            <button onclick="downloadBarcode()">下载条形码</button>
+        </div>
+        <svg id="barcode"></svg>
+    </div>
+
+    <script>
+        function calculateChecksum() {
+            const code = document.getElementById("code").value;
+            const wrapper = document.getElementById("wrapper").value;
+
+            // 检查输入是否为12位数字
+            if (!/^[0-9]{12}$/.test(code)) {
+                document.getElementById("result").textContent = "请输入12位有效数字代码。";
+                document.getElementById("copy-container").style.display = "none";
+                document.getElementById("barcode").style.display = "none";
+                return;
+            }
+
+            let sumEven = 0;
+            let sumOdd = 0;
+
+            // 计算校验码时不包括包装指示符
+            for (let i = 0; i < code.length; i++) {
+                const digit = parseInt(code[i], 10);
+
+                // 偶数位索引从1开始计算（实际是数组的奇数索引）
+                if ((i + 1) % 2 === 0) {
+                    sumEven += digit;
+                } else {
+                    sumOdd += digit;
+                }
+            }
+
+            // 步骤b: 偶数位求和乘以3
+            const stepB = sumEven * 3;
+
+            // 步骤d: 将步骤b与奇数位求和相加
+            const total = stepB + sumOdd;
+
+            // 步骤e: 计算校验码
+            const checksum = Math.ceil(total / 10) * 10 - total;
+
+            // 显示结果
+            document.getElementById("result").textContent = `校验码为：${checksum}`;
+
+            // 构造完整条形码（包括包装指示符）
+            const fullCode = `${wrapper}${code}${checksum}`;
+            const barcodeCode = `${code}${checksum}`; // 不含包装指示符的条形码
+            document.getElementById("full-code").textContent = `完整号码：${fullCode}`;
+            document.getElementById("copy-container").style.display = "flex";
+
+            // 生成条形码
+            JsBarcode("#barcode", barcodeCode, {
+                format: "EAN13",
+                displayValue: true,
+                fontSize: 16
+            });
+        }
+
+        function copyToClipboard() {
+            const fullCode = document.getElementById("full-code").textContent.replace("完整号码：", "");
+            navigator.clipboard.writeText(fullCode).then(() => {
+                alert("复制成功！");
+            }).catch(err => {
+                alert("复制失败，请手动复制。");
+            });
+        }
+
+        function downloadBarcode() {
+            const svg = document.getElementById("barcode");
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            const img = new Image();
+
+            img.onload = function () {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const pngFile = canvas.toDataURL("image/png");
+                const downloadLink = document.createElement("a");
+                downloadLink.href = pngFile;
+                downloadLink.download = "barcode.png";
+                downloadLink.click();
+            };
+
+            img.src = "data:image/svg+xml;base64," + btoa(svgData);
+        }
+
+        // 页面加载完成后自动计算
+        window.onload = function () {
+            const codeInput = document.getElementById("code");
+            const wrapperSelect = document.getElementById("wrapper");
+            codeInput.addEventListener("input", calculateChecksum);
+            wrapperSelect.addEventListener("change", calculateChecksum);
+            codeInput.value = "690123456789"; // 设置一个默认值
+            calculateChecksum(); // 自动计算
+        };
+    </script>
+</body>
+</html>
