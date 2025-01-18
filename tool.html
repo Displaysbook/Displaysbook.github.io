@@ -55,7 +55,7 @@
     <div class="container">
         <h1>校验码计算器</h1>
         <label for="code">输入代码（12位数字）：</label><br>
-        <input type="text" id="code" maxlength="12" placeholder="例如: 697819731001"><br>
+        <input type="text" id="code" maxlength="12" placeholder="例如: 690123456789"><br>
         <label for="wrapper">包装指示符：</label>
         <select id="wrapper">
             <option value="0" selected>0</option>
@@ -69,6 +69,11 @@
             <option value="8">8</option>
             <option value="9">9</option>
         </select><br>
+        <label for="widthRatio">条形码宽比例：</label>
+        <input type="number" id="widthRatio" value="3" min="1" step="1" style="width: 50px;">
+        <label for="heightRatio">高比例：</label>
+        <input type="number" id="heightRatio" value="1" min="0.5" step="0.1" style="width: 50px;">
+        <br>
         <button onclick="calculateChecksum()">计算校验码</button>
 
         <div id="result"></div>
@@ -84,6 +89,8 @@
         function calculateChecksum() {
             const code = document.getElementById("code").value;
             const wrapper = document.getElementById("wrapper").value;
+            const widthRatio = parseFloat(document.getElementById("widthRatio").value);
+            const heightRatio = parseFloat(document.getElementById("heightRatio").value);
 
             // 检查输入是否为12位数字
             if (!/^[0-9]{12}$/.test(code)) {
@@ -130,7 +137,9 @@
             JsBarcode("#barcode", barcodeCode, {
                 format: "EAN13",
                 displayValue: true,
-                fontSize: 16
+                fontSize: 16,
+                width: widthRatio, // 自定义宽比例
+                height: heightRatio * 100 // 自定义高比例
             });
         }
 
@@ -168,9 +177,15 @@
         window.onload = function () {
             const codeInput = document.getElementById("code");
             const wrapperSelect = document.getElementById("wrapper");
+            const widthInput = document.getElementById("widthRatio");
+            const heightInput = document.getElementById("heightRatio");
+
             codeInput.addEventListener("input", calculateChecksum);
             wrapperSelect.addEventListener("change", calculateChecksum);
-            codeInput.value = "697819731001"; // 设置一个默认值
+            widthInput.addEventListener("input", calculateChecksum);
+            heightInput.addEventListener("input", calculateChecksum);
+
+            codeInput.value = "690123456789"; // 设置一个默认值
             calculateChecksum(); // 自动计算
         };
     </script>
