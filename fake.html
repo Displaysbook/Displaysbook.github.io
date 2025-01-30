@@ -68,9 +68,9 @@
     <h2>📡 P2P 聊天室（支持手机）</h2>
 
     <div id="container">
-        <p>房间标识 (Magnet URI):</p>
-        <input type="text" id="magnetUri" readonly>
-        <button onclick="copyMagnet()">📋 复制 Magnet URI</button>
+        <p>🔗 请输入 Magnet URI 或创建新房间:</p>
+        <input type="text" id="magnetUri" placeholder="输入 Magnet URI 或创建新房间">
+        <button onclick="createMagnetURI()">🌟 创建新房间</button>
         <button onclick="joinRoom()">🔗 加入聊天室</button>
 
         <div id="messages"></div>
@@ -94,21 +94,25 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // **自动创建 Magnet URI**
+        // **创建新 Magnet URI**
         function createMagnetURI() {
-            if (magnetUri) return;  // 避免重复生成
-
             let file = new File(["P2P Chat Room"], "room.txt", { type: "text/plain" });
             client.seed(file, torrent => {
                 magnetUri = torrent.magnetURI;
                 magnetUriInput.value = magnetUri;
-                logMessage("✅ 创建房间成功: " + magnetUri);
+                logMessage("✅ 新房间已创建: " + magnetUri);
             });
         }
 
         // **加入 P2P 聊天室**
         function joinRoom() {
-            if (!magnetUri) magnetUri = magnetUriInput.value;
+            let inputMagnetUri = magnetUriInput.value.trim();
+            if (!inputMagnetUri) {
+                alert("请输入 Magnet URI 或创建新房间！");
+                return;
+            }
+            magnetUri = inputMagnetUri;
+
             if (client.get(magnetUri)) {
                 logMessage("⚠️ 已经在聊天室中");
                 return;
@@ -142,18 +146,11 @@
             });
         }
 
-        function copyMagnet() {
-            navigator.clipboard.writeText(magnetUriInput.value);
-            alert("✅ Magnet URI 已复制!");
-        }
-
         // **移动端适配**
         document.getElementById('messageInput').addEventListener('focus', function () {
             window.scrollTo(0, document.body.scrollHeight);
         });
 
-        // **页面加载时自动创建 Magnet URI**
-        createMagnetURI();
     </script>
 
 </body>
