@@ -3,33 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P 聊天室</title>
+    <title>P2P 聊天室（支持手机）</title>
     <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        input, button { margin: 5px; padding: 10px; font-size: 16px; }
-        #messages { max-width: 600px; margin: 10px auto; padding: 10px; border: 1px solid #ccc; height: 300px; overflow-y: scroll; }
-        .message { padding: 5px; border-bottom: 1px solid #eee; }
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background: #f4f4f4;
+        }
+        h2 {
+            font-size: 22px;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            margin: 0;
+        }
+        #container {
+            max-width: 600px;
+            margin: auto;
+            padding: 10px;
+        }
+        input, button {
+            width: 100%;
+            padding: 12px;
+            margin: 5px 0;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:active {
+            background: #0056b3;
+        }
+        #messages {
+            width: 100%;
+            height: 300px;
+            background: white;
+            border-radius: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            text-align: left;
+            border: 1px solid #ccc;
+        }
+        .message {
+            padding: 5px;
+            margin: 5px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        #messageInput {
+            flex-grow: 1;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
 
-    <h2>基于 Magnet URI 的 P2P 聊天室</h2>
-    <p>房间标识 (Magnet URI):</p>
-    <input type="text" id="magnetUri" size="60" readonly>
-    <button onclick="copyMagnet()">复制 Magnet URI</button>
-    <button onclick="joinRoom()">加入聊天室</button>
+    <h2>📡 P2P 聊天室（支持手机）</h2>
 
-    <div id="messages"></div>
+    <div id="container">
+        <p>房间标识 (Magnet URI):</p>
+        <input type="text" id="magnetUri" readonly>
+        <button onclick="copyMagnet()">📋 复制 Magnet URI</button>
+        <button onclick="joinRoom()">🔗 加入聊天室</button>
 
-    <input type="text" id="messageInput" placeholder="输入消息...">
-    <button onclick="sendMessage()">发送</button>
+        <div id="messages"></div>
+
+        <input type="text" id="messageInput" placeholder="输入消息...">
+        <button onclick="sendMessage()">📨 发送</button>
+    </div>
 
     <script>
         let client = new WebTorrent();
         let peers = [];
         let magnetUriInput = document.getElementById('magnetUri');
         let messagesDiv = document.getElementById('messages');
+        let magnetUri = null;
 
         function logMessage(msg) {
             let msgElement = document.createElement("div");
@@ -39,27 +94,35 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // 自动创建房间 Magnet URI
+        // **自动创建 Magnet URI**
         function createMagnetURI() {
+            if (magnetUri) return;  // 避免重复生成
+
             let file = new File(["P2P Chat Room"], "room.txt", { type: "text/plain" });
             client.seed(file, torrent => {
-                let magnetUri = torrent.magnetURI;
+                magnetUri = torrent.magnetURI;
                 magnetUriInput.value = magnetUri;
-                logMessage("创建房间成功: " + magnetUri);
+                logMessage("✅ 创建房间成功: " + magnetUri);
             });
         }
 
+        // **加入 P2P 聊天室**
         function joinRoom() {
-            let magnetUri = magnetUriInput.value;
+            if (!magnetUri) magnetUri = magnetUriInput.value;
+            if (client.get(magnetUri)) {
+                logMessage("⚠️ 已经在聊天室中");
+                return;
+            }
+
             client.add(magnetUri, function (torrent) {
-                logMessage("已加入聊天室...");
+                logMessage("✅ 已加入聊天室...");
 
                 torrent.on('wire', function (wire) {
-                    logMessage("发现新用户: " + wire.peerId);
+                    logMessage("🆕 发现新用户: " + wire.peerId);
                     peers.push(wire);
 
                     wire.on('data', function (data) {
-                        logMessage("收到消息: " + data.toString());
+                        logMessage("📩 收到消息: " + data.toString());
                     });
                 });
             });
@@ -69,22 +132,27 @@
             let msg = document.getElementById('messageInput').value;
             if (!msg) return;
 
-            logMessage("你: " + msg);
+            logMessage("🗣️ 你: " + msg);
             peers.forEach(peer => {
                 try {
                     peer.write(msg);
                 } catch (e) {
-                    console.error("发送失败:", e);
+                    console.error("❌ 发送失败:", e);
                 }
             });
         }
 
         function copyMagnet() {
             navigator.clipboard.writeText(magnetUriInput.value);
-            alert("Magnet URI 已复制!");
+            alert("✅ Magnet URI 已复制!");
         }
 
-        // 页面加载时自动创建 Magnet URI
+        // **移动端适配**
+        document.getElementById('messageInput').addEventListener('focus', function () {
+            window.scrollTo(0, document.body.scrollHeight);
+        });
+
+        // **页面加载时自动创建 Magnet URI**
         createMagnetURI();
     </script>
 
