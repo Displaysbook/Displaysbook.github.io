@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P 聊天室</title>
+    <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        input, button { margin: 5px; padding: 10px; font-size: 16px; }
+        #messages { max-width: 600px; margin: 10px auto; padding: 10px; border: 1px solid #ccc; height: 300px; overflow-y: scroll; }
+        .message { padding: 5px; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <h2>基于 Magnet URI 的 P2P 聊天室</h2>
+    <p>房间标识 (Magnet URI):</p>
+    <input type="text" id="magnetUri" size="60" readonly>
+    <button onclick="copyMagnet()">复制 Magnet URI</button>
+    <button onclick="joinRoom()">加入聊天室</button>
+
+    <div id="messages"></div>
+
+    <input type="text" id="messageInput" placeholder="输入消息...">
+    <button onclick="sendMessage()">发送</button>
+
+    <script>
+        let client = new WebTorrent();
+        let peers = [];
+        let magnetUriInput = document.getElementById('magnetUri');
+        let messagesDiv = document.getElementById('messages');
+
+        function logMessage(msg) {
+            let msgElement = document.createElement("div");
+            msgElement.classList.add("message");
+            msgElement.textContent = msg;
+            messagesDiv.appendChild(msgElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // 自动创建房间 Magnet URI
+        function createMagnetURI() {
+            let file = new File(["P2P Chat Room"], "room.txt", { type: "text/plain" });
+            client.seed(file, torrent => {
+                let magnetUri = torrent.magnetURI;
+                magnetUriInput.value = magnetUri;
+                logMessage("创建房间成功: " + magnetUri);
+            });
+        }
+
+        function joinRoom() {
+            let magnetUri = magnetUriInput.value;
+            client.add(magnetUri, function (torrent) {
+                logMessage("已加入聊天室...");
+
+                torrent.on('wire', function (wire) {
+                    logMessage("发现新用户: " + wire.peerId);
+                    peers.push(wire);
+
+                    wire.on('data', function (data) {
+                        logMessage("收到消息: " + data.toString());
+                    });
+                });
+            });
+        }
+
+        function sendMessage() {
+            let msg = document.getElementById('messageInput').value;
+            if (!msg) return;
+
+            logMessage("你: " + msg);
+            peers.forEach(peer => {
+                try {
+                    peer.write(msg);
+                } catch (e) {
+                    console.error("发送失败:", e);
+                }
+            });
+        }
+
+        function copyMagnet() {
+            navigator.clipboard.writeText(magnetUriInput.value);
+            alert("Magnet URI 已复制!");
+        }
+
+        // 页面加载时自动创建 Magnet URI
+        createMagnetURI();
+    </script>
+
+</body>
+</html>
