@@ -1,0 +1,19 @@
+<iframe src="file:///C:/Users/Scrchen/OneDrive/%E6%A1%8C%E9%9D%A2/" width="width" height="height"></iframe>
+<script>
+    // 获取当前页面的完整 HTML 内容
+    const htmlContent = document.documentElement.outerHTML;
+
+    // 创建一个 Blob 对象，类型为 HTML 文件
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+
+    // 创建一个下载链接
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'page.html';  // 设置下载文件的名称
+
+    // 触发下载
+    link.click();
+
+    // 释放 URL 对象
+    URL.revokeObjectURL(link.href);
+</script>
