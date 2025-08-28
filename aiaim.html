@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YOLO ONNX 网页推理（2类）</title>
+  <!-- onnxruntime-web -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+  <style>
+    :root{--bg:#0b0c10;--fg:#e8e8e8;--muted:#9aa0a6;--accent:#67b3ff}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,Segoe UI,Roboto,Arial}
+    header{padding:14px 16px;border-bottom:1px solid #1f2328;background:#0e1116;position:sticky;top:0;z-index:10}
+    h1{margin:0;font-size:18px}
+    main{display:grid;grid-template-columns: 340px 1fr; gap:14px; padding:14px; min-height:calc(100vh - 56px)}
+    .panel{background:#0e1116;border:1px solid #1f2328;border-radius:14px;padding:12px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+    button{padding:8px 12px;border-radius:10px;border:1px solid #2b3036;background:#121721;color:var(--fg);cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    input[type="range"]{width:140px}
+    label{color:var(--muted)}
+    small{color:var(--muted)}
+    #videoWrap{position:relative;max-height:78vh}
+    video,canvas{border-radius:14px;display:block;max-width:100%;height:auto}
+    #canvas{position:absolute;left:0;top:0}
+    pre{white-space:pre-wrap;background:#0b0f14;border:1px solid #1f2328;border-radius:10px;padding:8px;max-height:220px;overflow:auto}
+    code{color:#8ab4f8}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #2b3036;color:var(--muted)}
+  </style>
+</head>
+<body>
+<header>
+  <h1>YOLO ONNX 网页推理（2 类模型）</h1>
+</header>
+<main>
+  <section class="panel" id="ctrl">
+    <div class="row">
+      <button id="btnLoad">加载模型</button>
+      <span id="modelStatus" class="badge">未加载</span>
+    </div>
+    <div class="row">
+      <button id="btnWebcam">开启摄像头</button>
+      <button id="btnScreen">共享屏幕</button>
+      <button id="btnStop" disabled>停止</button>
+    </div>
+    <div class="row">
+      <label>置信度: <span id="confVal">0.25</span></label>
+      <input id="conf" type="range" min="0" max="1" step="0.01" value="0.25">
+    </div>
+    <div class="row">
+      <label>IoU: <span id="iouVal">0.45</span></label>
+      <input id="iou" type="range" min="0" max="1" step="0.01" value="0.45">
+    </div>
+    <div class="row">
+      <label>最大框数:</label>
+      <input id="maxDet" type="number" value="100" min="1" style="width:88px">
+    </div>
+    <div class="row">
+      <label>类别名（逗号分隔，2类）</label>
+      <input id="classNames" value="class0,class1" style="width:100%">
+    </div>
+    <div class="row"><small>模型地址: <code>https://Displaysbook.github.io/best.onnx</code></small></div>
+    <details>
+      <summary>调试日志</summary>
+      <pre id="log"></pre>
+    </details>
+  </section>
+  <section class="panel">
+    <div id="videoWrap">
+      <video id="video" playsinline muted></video>
+      <canvas id="canvas"></canvas>
+    </div>
+  </section>
+</main>
+
+<script>
+  // ====== 配置 ======
+  const MODEL_URL = 'https://Displaysbook.github.io/best.onnx';
+  const TARGET_SIZE = 640; // 训练/导出时的输入分辨率
+
+  // onnxruntime-web 环境优化
+  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+  ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 4);
+  ort.env.wasm.simd = true;
+
+  // ====== UI refs ======
+  const els = {
+    btnLoad: document.getElementById('btnLoad'),
+    btnWebcam: document.getElementById('btnWebcam'),
+    btnScreen: document.getElementById('btnScreen'),
+    btnStop: document.getElementById('btnStop'),
+    modelStatus: document.getElementById('modelStatus'),
+    conf: document.getElementById('conf'),
+    confVal: document.getElementById('confVal'),
+    iou: document.getElementById('iou'),
+    iouVal: document.getElementById('iouVal'),
+    maxDet: document.getElementById('maxDet'),
+    classNames: document.getElementById('classNames'),
+    log: document.getElementById('log'),
+    video: document.getElementById('video'),
+    canvas: document.getElementById('canvas'),
+    wrap: document.getElementById('videoWrap'),
+  };
+
+  const state = {
+    session: null,
+    running: false,
+    stream: null,
+    // 记录 last dims 方便调试
+    lastOutputInfo: null,
+  };
+
+  function log(...args){
+    const s = args.map(a=> (typeof a==='object'? JSON.stringify(a): String(a))).join(' ');
+    console.log('[log]',...args);
+    els.log.textContent = (s + '\n' + els.log.textContent).slice(0, 8000);
+  }
+
+  // ====== 加载模型 ======
+  els.btnLoad.onclick = async () => {
+    try {
+      els.btnLoad.disabled = true;
+      els.modelStatus.textContent = '加载中…';
+      const so = { executionProviders: ['wasm'] };
+      state.session = await ort.InferenceSession.create(MODEL_URL, so);
+      // 读取输入名和形状
+      const inputName = state.session.inputNames[0];
+      const inputMeta = state.session.inputMetadata[inputName];
+      log('模型加载成功', { inputName, dims: inputMeta.dimensions });
+      els.modelStatus.textContent = '已加载 ✅';
+      // 预热
+      const warm = new ort.Tensor('float32', new Float32Array(1*3*TARGET_SIZE*TARGET_SIZE), [1,3,TARGET_SIZE,TARGET_SIZE]);
+      await state.session.run({ [inputName]: warm });
+      log('预热完成');
+    } catch (e) {
+      console.error(e); log('加载失败', e.toString());
+      els.modelStatus.textContent = '加载失败 ❌';
+    } finally {
+      els.btnLoad.disabled = false;
+    }
+  };
+
+  // ====== 采集视频 ======
+  els.btnWebcam.onclick = () => startStream({ video: { width: {ideal:1280}, height:{ideal:720} }, audio:false });
+  els.btnScreen.onclick = async () => {
+    try{
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
+      attachStream(stream);
+    }catch(e){ log('屏幕共享失败', e.toString()); }
+  };
+
+  els.btnStop.onclick = () => stopStream();
+
+  async function startStream(constraints){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      attachStream(stream);
+    }catch(e){ log('摄像头失败', e.toString()); }
+  }
+
+  function attachStream(stream){
+    stopStream();
+    state.stream = stream;
+    els.video.srcObject = stream;
+    els.video.onloadedmetadata = () => {
+      els.video.play();
+      resizeCanvas();
+      startLoop();
+    };
+    els.btnStop.disabled = false;
+  }
+
+  function stopStream(){
+    if(state.stream){
+      state.stream.getTracks().forEach(t=>t.stop());
+      state.stream = null;
+    }
+    state.running = false;
+    els.btnStop.disabled = true;
+  }
+
+  function resizeCanvas(){
+    const vw = els.video.videoWidth || 1280;
+    const vh = els.video.videoHeight || 720;
+    els.canvas.width = vw;
+    els.canvas.height = vh;
+    els.canvas.style.width = els.video.clientWidth + 'px';
+    els.canvas.style.height = els.video.clientHeight + 'px';
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  els.conf.oninput = () => els.confVal.textContent = els.conf.value;
+  els.iou.oninput = () => els.iouVal.textContent = els.iou.value;
+
+  // ====== 推理主循环 ======
+  async function startLoop(){
+    if(!state.session){ log('请先加载模型'); return; }
+    if(state.running) return;
+    state.running = true;
+    const ctx = els.canvas.getContext('2d');
+    const off = document.createElement('canvas');
+    const offCtx = off.getContext('2d');
+
+    async function frame(){
+      if(!state.running) return;
+      const vw = els.video.videoWidth, vh = els.video.videoHeight;
+      if(!vw || !vh){ requestAnimationFrame(frame); return; }
+
+      // 预处理：letterbox 到 640x640，通道排列 NCHW，归一化
+      off.width = TARGET_SIZE; off.height = TARGET_SIZE;
+      const {scale, padX, padY, newW, newH} = letterbox(offCtx, els.video, TARGET_SIZE, TARGET_SIZE);
+      const input = toCHW(offCtx, TARGET_SIZE, TARGET_SIZE);
+
+      // 推理
+      const inputName = state.session.inputNames[0];
+      const feeds = { [inputName]: new ort.Tensor('float32', input, [1,3,TARGET_SIZE,TARGET_SIZE]) };
+      let results;
+      try{
+        results = await state.session.run(feeds);
+      }catch(e){ log('推理失败', e.toString()); state.running=false; return; }
+
+      // 获取输出 tensor（取第一个）
+      const outName = state.session.outputNames[0];
+      const out = results[outName];
+      state.lastOutputInfo = {name: outName, dims: out.dims, length: out.data.length};
+
+      // 解析输出
+      const confTh = parseFloat(els.conf.value);
+      const iouTh = parseFloat(els.iou.value);
+      const maxDet = Math.max(1, parseInt(els.maxDet.value||'100'));
+      const classes = els.classNames.value.split(',').map(s=>s.trim()).filter(Boolean);
+
+      const dets = decodeDetections(out, confTh, classes.length || 2);
+      const kept = nms(dets, iouTh, maxDet);
+
+      // 绘制
+      ctx.clearRect(0,0,els.canvas.width, els.canvas.height);
+      drawBoxes(ctx, kept, {scale, padX, padY, srcW:vw, srcH:vh});
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ====== 工具：letterbox 缩放 + 填充 ======
+  function letterbox(ctx, src, dstW, dstH){
+    const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
+    const r = Math.min(dstW/sw, dstH/sh);
+    const newW = Math.round(sw * r), newH = Math.round(sh * r);
+    const padX = Math.floor((dstW - newW)/2), padY = Math.floor((dstH - newH)/2);
+    ctx.fillStyle = 'rgb(114,114,114)';
+    ctx.fillRect(0,0,dstW,dstH);
+    ctx.drawImage(src, 0,0, sw,sh, padX,padY, newW,newH);
+    return {scale:r, padX, padY, newW, newH};
+  }
+
+  // 将 offscreen RGBA 转为 Float32 NCHW
+  function toCHW(ctx, w, h){
+    const {data} = ctx.getImageData(0,0,w,h); // RGBA
+    const chw = new Float32Array(3*w*h);
+    let p = 0, rOff = 0, gOff = w*h, bOff = 2*w*h;
+    for(let i=0;i<data.length;i+=4){
+      chw[rOff + p] = data[i]   /255; // R
+      chw[gOff + p] = data[i+1] /255; // G
+      chw[bOff + p] = data[i+2] /255; // B
+      p++;
+    }
+    return chw;
+  }
+
+  // ====== 解码：兼容 YOLOv5/YOLOv8 常见 ONNX 输出 ======
+  // 返回 [{x1,y1,x2,y2,score,cls}]
+  function decodeDetections(out, confTh, numClassesGuess){
+    const dims = out.dims; // 可能是 [1,N,attrs] 或 [1,attrs,N]
+    const data = out.data;
+    let N=0, C=0, strideN=0, strideC=0, transposed=false;
+
+    if(dims.length === 3){
+      if(dims[1] > dims[2]){ // [1,N,C]
+        N = dims[1]; C = dims[2]; strideN = C; strideC = 1; transposed=false;
+      }else{ // [1,C,N]
+        N = dims[2]; C = dims[1]; strideN = 1; strideC = N; transposed=true;
+      }
+    }else if(dims.length === 2){ // [N,C]
+      N = dims[0]; C = dims[1]; strideN = C; strideC = 1;
+    }else{
+      log('未知输出维度', JSON.stringify(dims));
+      return [];
+    }
+
+    const dets = [];
+    for(let i=0;i<N;i++){
+      // 取一条预测
+      const off = i*strideN;
+      const x = data[off + 0*strideC];
+      const y = data[off + 1*strideC];
+      const w = data[off + 2*strideC];
+      const h = data[off + 3*strideC];
+
+      // 属性推断：
+      // - 若 C == 4 + num_classes（常见 YOLOv8 导出），无 obj，score = max(class)
+      // - 若 C >= 5 + num_classes（YOLOv5），含 obj，score = obj * max(class)
+      let score=0, cls=-1;
+      if(C === 4 + numClassesGuess){
+        let best=-1, bestIdx=-1;
+        for(let j=4;j<C;j++){
+          if(data[off + j*strideC] > best){ best=data[off + j*strideC]; bestIdx=j-4; }
+        }
+        score = best; cls = bestIdx;
+      } else if(C > 5){
+        const obj = data[off + 4*strideC];
+        let best=-1, bestIdx=-1;
+        for(let j=5;j<C;j++){
+          if(data[off + j*strideC] > best){ best=data[off + j*strideC]; bestIdx=j-5; }
+        }
+        score = obj * best; cls = bestIdx;
+      } else {
+        continue; // 非法行
+      }
+
+      if(score < confTh) continue;
+      // xywh->xyxy（注意：一般已是像素坐标，基于输入尺寸）
+      const x1 = x - w/2, y1 = y - h/2, x2 = x + w/2, y2 = y + h/2;
+      dets.push({x1,y1,x2,y2,score,cls});
+    }
+    return dets;
+  }
+
+  // ====== NMS ======
+  function nms(dets, iouTh=0.45, maxDet=100){
+    dets = dets.slice().sort((a,b)=>b.score - a.score);
+    const keep = [];
+    const areas = dets.map(d=> Math.max(0,d.x2-d.x1) * Math.max(0,d.y2-d.y1));
+
+    while(dets.length && keep.length < maxDet){
+      const cur = dets.shift();
+      keep.push(cur);
+      for(let i=dets.length-1;i>=0;i--){
+        const d = dets[i];
+        const xx1 = Math.max(cur.x1, d.x1);
+        const yy1 = Math.max(cur.y1, d.y1);
+        const xx2 = Math.min(cur.x2, d.x2);
+        const yy2 = Math.min(cur.y2, d.y2);
+        const w = Math.max(0, xx2-xx1);
+        const h = Math.max(0, yy2-yy1);
+        const inter = w*h;
+        const o = inter / (areas[dets.indexOf(d)] + (cur.x2-cur.x1)*(cur.y2-cur.y1) - inter + 1e-9);
+        if(o > iouTh) dets.splice(i,1);
+      }
+    }
+    return keep;
+  }
+
+  // ====== 绘制框 ======
+  function drawBoxes(ctx, dets, meta){
+    const {scale, padX, padY, srcW, srcH} = meta;
+    ctx.lineWidth = Math.max(2, Math.min(srcW,srcH)/400);
+    ctx.font = `${Math.max(10, Math.min(srcW,srcH)/35)}px ui-sans-serif`;
+
+    const names = els.classNames.value.split(',').map(s=>s.trim()).filter(Boolean);
+
+    for(const d of dets){
+      // 从 640 坐标去 pad，再除以 scale，映射回原视频尺寸
+      let x1 = (d.x1 - padX) / scale;
+      let y1 = (d.y1 - padY) / scale;
+      let x2 = (d.x2 - padX) / scale;
+      let y2 = (d.y2 - padY) / scale;
+      // 裁剪
+      x1 = Math.max(0, Math.min(srcW, x1));
+      y1 = Math.max(0, Math.min(srcH, y1));
+      x2 = Math.max(0, Math.min(srcW, x2));
+      y2 = Math.max(0, Math.min(srcH, y2));
+
+      const w = x2-x1, h = y2-y1;
+      if(w<=2 || h<=2) continue;
+
+      // 边框
+      ctx.strokeStyle = '#67b3ff';
+      ctx.fillStyle = 'rgba(103,179,255,0.18)';
+      ctx.beginPath();
+      ctx.rect(x1,y1,w,h);
+      ctx.stroke();
+      ctx.fill();
+
+      // 标签
+      const label = `${names[d.cls] ?? ('cls'+d.cls)} ${(d.score*100).toFixed(1)}%`;
+      const tw = ctx.measureText(label).width + 8;
+      const th = parseInt(ctx.font,10) + 6;
+      ctx.fillStyle = 'rgba(14,17,22,0.85)';
+      ctx.fillRect(x1, Math.max(0,y1-th), tw, th);
+      ctx.strokeStyle = '#2b3036';
+      ctx.strokeRect(x1, Math.max(0,y1-th), tw, th);
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillText(label, x1+4, Math.max(12, y1-4));
+    }
+  }
+
+  // ====== 额外：显示最后一次输出的维度（方便排错） ======
+  setInterval(()=>{
+    if(state.lastOutputInfo){
+      els.modelStatus.title = `输出 ${state.lastOutputInfo.name} dims=${JSON.stringify(state.lastOutputInfo.dims)} len=${state.lastOutputInfo.length}`;
+    }
+  }, 500);
+
+</script>
+</body>
+</html>
