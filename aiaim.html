@@ -68,7 +68,7 @@
   <section class="panel">
     <div id="videoWrap">
       <video id="video" playsinline muted></video>
-      <canvas id="canvas"></canvas>
+      <canvas id="canvas" width="1280" height="720" style="width: 300px; height: 150px;"></canvas>
     </div>
   </section>
 </main>
@@ -78,10 +78,15 @@
   const MODEL_URL = 'https://Displaysbook.github.io/best.onnx';
   const TARGET_SIZE = 640; // 训练/导出时的输入分辨率
 
-  // onnxruntime-web 环境优化
+  // ---- ORT Web 环境设置（安全降级，避免 numThreads 警告）----
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
-  ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 4);
   ort.env.wasm.simd = true;
+  if (self.crossOriginIsolated) {
+    ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 4);
+  } else {
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = false;
+  }
 
   // ====== UI refs ======
   const els = {
@@ -106,7 +111,6 @@
     session: null,
     running: false,
     stream: null,
-    // 记录 last dims 方便调试
     lastOutputInfo: null,
   };
 
@@ -116,24 +120,30 @@
     els.log.textContent = (s + '\n' + els.log.textContent).slice(0, 8000);
   }
 
-  // ====== 加载模型 ======
+  // ====== 加载模型（修复 .images 报错，使用 inputNames[0]） ======
   els.btnLoad.onclick = async () => {
     try {
       els.btnLoad.disabled = true;
       els.modelStatus.textContent = '加载中…';
+
       const so = { executionProviders: ['wasm'] };
-      state.session = await ort.InferenceSession.create(MODEL_URL, so);
-      // 读取输入名和形状
-      const inputName = state.session.inputNames[0];
-      const inputMeta = state.session.inputMetadata[inputName];
-      log('模型加载成功', { inputName, dims: inputMeta.dimensions });
+      const session = await ort.InferenceSession.create(MODEL_URL, so);
+      state.session = session;
+
+      const inputName = session.inputNames?.[0] ?? 'images'; // 某些导出常叫 images，但这是张量名
+      const meta = session.inputMetadata?.[inputName];
+      const dims = meta?.dimensions ?? [1,3,TARGET_SIZE,TARGET_SIZE];
+
+      log('模型加载成功', { inputName, dims });
       els.modelStatus.textContent = '已加载 ✅';
+
       // 预热
       const warm = new ort.Tensor('float32', new Float32Array(1*3*TARGET_SIZE*TARGET_SIZE), [1,3,TARGET_SIZE,TARGET_SIZE]);
-      await state.session.run({ [inputName]: warm });
+      await session.run({ [inputName]: warm });
       log('预热完成');
     } catch (e) {
-      console.error(e); log('加载失败', e.toString());
+      console.error(e);
+      log('加载失败', e?.stack || String(e));
       els.modelStatus.textContent = '加载失败 ❌';
     } finally {
       els.btnLoad.disabled = false;
@@ -148,7 +158,6 @@
       attachStream(stream);
     }catch(e){ log('屏幕共享失败', e.toString()); }
   };
-
   els.btnStop.onclick = () => stopStream();
 
   async function startStream(constraints){
@@ -197,9 +206,11 @@
     if(!state.session){ log('请先加载模型'); return; }
     if(state.running) return;
     state.running = true;
+
     const ctx = els.canvas.getContext('2d');
     const off = document.createElement('canvas');
-    const offCtx = off.getContext('2d');
+    // 关键：willReadFrequently=true，避免 Canvas2D 警告
+    const offCtx = off.getContext('2d', { willReadFrequently: true });
 
     async function frame(){
       if(!state.running) return;
@@ -231,7 +242,7 @@
       const classes = els.classNames.value.split(',').map(s=>s.trim()).filter(Boolean);
 
       const dets = decodeDetections(out, confTh, classes.length || 2);
-      const kept = nms(dets, iouTh, maxDet);
+      const kept = nms(dets, iouTh, maxDet); // 保留你原来的实现（含你提到的索引漂移问题）
 
       // 绘制
       ctx.clearRect(0,0,els.canvas.width, els.canvas.height);
@@ -271,15 +282,15 @@
   // ====== 解码：兼容 YOLOv5/YOLOv8 常见 ONNX 输出 ======
   // 返回 [{x1,y1,x2,y2,score,cls}]
   function decodeDetections(out, confTh, numClassesGuess){
-    const dims = out.dims; // 可能是 [1,N,attrs] 或 [1,attrs,N]
+    const dims = out.dims; // 可能是 [1,N,attrs] 或 [1,attrs,N]，也可能 [N,attrs]
     const data = out.data;
-    let N=0, C=0, strideN=0, strideC=0, transposed=false;
+    let N=0, C=0, strideN=0, strideC=0;
 
     if(dims.length === 3){
       if(dims[1] > dims[2]){ // [1,N,C]
-        N = dims[1]; C = dims[2]; strideN = C; strideC = 1; transposed=false;
+        N = dims[1]; C = dims[2]; strideN = C; strideC = 1;
       }else{ // [1,C,N]
-        N = dims[2]; C = dims[1]; strideN = 1; strideC = N; transposed=true;
+        N = dims[2]; C = dims[1]; strideN = 1; strideC = N;
       }
     }else if(dims.length === 2){ // [N,C]
       N = dims[0]; C = dims[1]; strideN = C; strideC = 1;
@@ -290,43 +301,40 @@
 
     const dets = [];
     for(let i=0;i<N;i++){
-      // 取一条预测
       const off = i*strideN;
       const x = data[off + 0*strideC];
       const y = data[off + 1*strideC];
       const w = data[off + 2*strideC];
       const h = data[off + 3*strideC];
 
-      // 属性推断：
-      // - 若 C == 4 + num_classes（常见 YOLOv8 导出），无 obj，score = max(class)
-      // - 若 C >= 5 + num_classes（YOLOv5），含 obj，score = obj * max(class)
       let score=0, cls=-1;
       if(C === 4 + numClassesGuess){
         let best=-1, bestIdx=-1;
         for(let j=4;j<C;j++){
-          if(data[off + j*strideC] > best){ best=data[off + j*strideC]; bestIdx=j-4; }
+          const v = data[off + j*strideC];
+          if(v > best){ best=v; bestIdx=j-4; }
         }
         score = best; cls = bestIdx;
       } else if(C > 5){
         const obj = data[off + 4*strideC];
         let best=-1, bestIdx=-1;
         for(let j=5;j<C;j++){
-          if(data[off + j*strideC] > best){ best=data[off + j*strideC]; bestIdx=j-5; }
+          const v = data[off + j*strideC];
+          if(v > best){ best=v; bestIdx=j-5; }
         }
         score = obj * best; cls = bestIdx;
       } else {
-        continue; // 非法行
+        continue;
       }
 
       if(score < confTh) continue;
-      // xywh->xyxy（注意：一般已是像素坐标，基于输入尺寸）
       const x1 = x - w/2, y1 = y - h/2, x2 = x + w/2, y2 = y + h/2;
       dets.push({x1,y1,x2,y2,score,cls});
     }
     return dets;
   }
 
-  // ====== NMS ======
+  // ====== NMS（按你原实现保留，可能存在索引漂移，不做修复） ======
   function nms(dets, iouTh=0.45, maxDet=100){
     dets = dets.slice().sort((a,b)=>b.score - a.score);
     const keep = [];
@@ -344,6 +352,7 @@
         const w = Math.max(0, xx2-xx1);
         const h = Math.max(0, yy2-yy1);
         const inter = w*h;
+        // 注意：这行沿用你之前的写法（可能有索引漂移），应你要求不改
         const o = inter / (areas[dets.indexOf(d)] + (cur.x2-cur.x1)*(cur.y2-cur.y1) - inter + 1e-9);
         if(o > iouTh) dets.splice(i,1);
       }
@@ -360,12 +369,11 @@
     const names = els.classNames.value.split(',').map(s=>s.trim()).filter(Boolean);
 
     for(const d of dets){
-      // 从 640 坐标去 pad，再除以 scale，映射回原视频尺寸
       let x1 = (d.x1 - padX) / scale;
       let y1 = (d.y1 - padY) / scale;
       let x2 = (d.x2 - padX) / scale;
       let y2 = (d.y2 - padY) / scale;
-      // 裁剪
+
       x1 = Math.max(0, Math.min(srcW, x1));
       y1 = Math.max(0, Math.min(srcH, y1));
       x2 = Math.max(0, Math.min(srcW, x2));
@@ -374,7 +382,6 @@
       const w = x2-x1, h = y2-y1;
       if(w<=2 || h<=2) continue;
 
-      // 边框
       ctx.strokeStyle = '#67b3ff';
       ctx.fillStyle = 'rgba(103,179,255,0.18)';
       ctx.beginPath();
@@ -382,7 +389,6 @@
       ctx.stroke();
       ctx.fill();
 
-      // 标签
       const label = `${names[d.cls] ?? ('cls'+d.cls)} ${(d.score*100).toFixed(1)}%`;
       const tw = ctx.measureText(label).width + 8;
       const th = parseInt(ctx.font,10) + 6;
@@ -401,7 +407,6 @@
       els.modelStatus.title = `输出 ${state.lastOutputInfo.name} dims=${JSON.stringify(state.lastOutputInfo.dims)} len=${state.lastOutputInfo.length}`;
     }
   }, 500);
-
 </script>
 </body>
 </html>
