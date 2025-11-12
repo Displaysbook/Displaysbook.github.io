@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8" />
-<title>五子棋 AI</title>
+<title>五子棋 AI（强化版）</title>
 <style>
   body { text-align:center; background:#f5f5dc; font-family:"Microsoft YaHei"; }
   .toolbar { margin-top:14px; display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap; }
@@ -13,7 +13,7 @@
 </style>
 </head>
 <body>
-<h1>五子棋 AI</h1>
+<h1>五子棋 AI（强化版）</h1>
 
 <div class="toolbar">
   <div>
@@ -47,7 +47,7 @@ let firstMoveDone = false;    // 是否已下过第一手（用于AI中心开局
 let hoverCell = null;         // {x,y} 玩家回合的红点提示位置（为空=使用默认中心提示）
 let starter = "human";        // "human" | "ai"
 
-/* ========== 初始化与UI ========== */
+/* ========== UI 绑定 ========== */
 document.getElementById("btnReset").onclick = () => {
   const radios = document.querySelectorAll('input[name="starter"]');
   for (const r of radios) if (r.checked) starter = r.value;
@@ -58,9 +58,37 @@ CANVAS.addEventListener("mousemove", onMouseMove);
 CANVAS.addEventListener("mouseleave", () => { hoverCell = null; draw(); });
 CANVAS.addEventListener("click", onClick);
 
-resetGame(starter);
+/* ========== 工具：坐标换算 ========== */
+function toPixel(i){ return GRID/2 + i*GRID; }
+function toCell(px){
+  // 将像素点映射到最近网格交点
+  const i = Math.round((px - GRID/2)/GRID);
+  return Math.max(0, Math.min(SIZE-1, i));
+}
+
+/* ========== 重置与开局 ========== */
+function resetGame(whoStarts){
+  board = Array.from({length:SIZE}, ()=>Array(SIZE).fill(0));
+  gameOver = false;
+  firstMoveDone = false;
+  currentTurn = BLACK;
+  humanSide = (whoStarts === "human") ? BLACK : WHITE;
+  aiSide = (humanSide === BLACK) ? WHITE : BLACK;
+  draw();
+
+  if (whoStarts === "ai") {
+    // AI先手：中心稳健开局
+    aiMove(); 
+  }
+}
 
 /* ========== 绘制 ========== */
+function draw(){
+  drawGrid();
+  drawPieces();
+  drawHoverDot();
+}
+
 function drawGrid() {
   CTX.clearRect(0,0,600,600);
   CTX.strokeStyle = "#000";
@@ -76,10 +104,8 @@ function drawGrid() {
     CTX.lineTo(GRID/2 + i*GRID, GRID/2 + (SIZE-1)*GRID);
     CTX.stroke();
   }
-  // 星位（可选，增强观感）
-  const star = [
-    [3,3],[11,3],[3,11],[11,11],[7,7]
-  ];
+  // 星位
+  const star = [[3,3],[11,3],[3,11],[11,11],[7,7]];
   CTX.fillStyle = "#000";
   for (const [sx,sy] of star) {
     const cx = toPixel(sx), cy = toPixel(sy);
@@ -105,269 +131,483 @@ function drawPiece(x, y, isBlack) {
   CTX.fill();
 }
 
+/* ========== 红点提示（玩家回合） ========== */
 function drawHoverDot() {
-  // 仅玩家回合显示红点提示；如果没有鼠标悬停，默认给中心点提示
   if (gameOver) return;
   if (currentTurn !== humanSide) return;
 
-  let hx, hy;
-  if (hoverCell && isInside(hoverCell.x, hoverCell.y) && board[hoverCell.x][hoverCell.y] === 0) {
-    hx = hoverCell.x; hy = hoverCell.y;
+  let x, y;
+  if (hoverCell) {
+    x = hoverCell.x; y = hoverCell.y;
   } else {
-    // 默认中心提示（空盘、人类先手时尤为直观）
-    hx = Math.floor(SIZE/2);
-    hy = Math.floor(SIZE/2);
-    if (board[hx][hy] !== 0) { return; } // 中心被占就不画
+    // 默认显示在棋盘中心位置（若被占则不显示）
+    x = 7; y = 7;
+    if (board[x][y] !== 0) return;
   }
-  const cx = toPixel(hx), cy = toPixel(hy);
-  CTX.beginPath();
+  if (board[x][y] !== 0) return;
+
+  const cx = toPixel(x), cy = toPixel(y);
   CTX.fillStyle = "red";
-  CTX.arc(cx, cy, 4.2, 0, Math.PI*2);
+  CTX.beginPath();
+  CTX.arc(cx, cy, 4, 0, Math.PI*2);
   CTX.fill();
 }
 
-function draw() {
-  drawGrid();
-  drawPieces();
-  drawHoverDot();
-}
-
-/* ========== 坐标/边界 ========== */
-function toPixel(i) { return GRID/2 + i*GRID; }
-function fromPixel(px) { return Math.round((px - GRID/2) / GRID); }
-function isInside(x,y) { return x>=0 && y>=0 && x<SIZE && y<SIZE; }
-
-/* ========== 交互 ========== */
-function onMouseMove(e) {
+/* ========== 鼠标交互 ========== */
+function onMouseMove(e){
   const rect = CANVAS.getBoundingClientRect();
-  const x = fromPixel(e.clientX - rect.left);
-  const y = fromPixel(e.clientY - rect.top);
-  if (!isInside(x,y)) { hoverCell = null; draw(); return; }
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const x = toCell(mx);
+  const y = toCell(my);
   hoverCell = {x,y};
   draw();
 }
 
-function onClick(e) {
+function onClick(e){
   if (gameOver) return;
   if (currentTurn !== humanSide) return;
 
   const rect = CANVAS.getBoundingClientRect();
-  const x = fromPixel(e.clientX - rect.left);
-  const y = fromPixel(e.clientY - rect.top);
-  if (!isInside(x,y) || board[x][y] !== 0) return;
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const x = toCell(mx);
+  const y = toCell(my);
 
-  // 玩家落子
-  board[x][y] = humanSide;
-  if (checkWin(x,y,humanSide)) { draw(); alert("你赢了！"); gameOver = true; return; }
+  if (board[x][y] !== 0) return;
 
-  // 轮到AI，无延迟
-  currentTurn = opponentOf(humanSide);
+  place(x,y,currentTurn);
+  if (checkWin(x,y,currentTurn)) {
+    gameOver = true;
+    draw();
+    alert("玩家胜！");
+    return;
+  }
+  if (isFull()) {
+    gameOver = true; draw(); alert("平局！");
+    return;
+  }
+  currentTurn = 3 - currentTurn;
   draw();
+
+  // AI 立即走
   aiMove();
 }
 
-/* ========== 重置与先手 ========== */
-function resetGame(whoStarts) {
-  board = Array.from({length: SIZE}, () => Array(SIZE).fill(0));
-  gameOver = false;
-  firstMoveDone = false;
-  hoverCell = null;
-
-  if (whoStarts === "ai") {
-    humanSide = WHITE;  // 人类后手 = 白
-    aiSide = BLACK;     // AI先手 = 黑
-    currentTurn = aiSide;
-    draw();
-    // 正确开局：AI第一手落中心（Tengen）
-    aiMove();           // 立即下（无延迟）
-  } else {
-    humanSide = BLACK;  // 人类先手 = 黑
-    aiSide = WHITE;     // AI后手 = 白
-    currentTurn = humanSide;
-    draw();             // 玩家回合会看到中心的红点提示
-  }
-}
-
-/* ========== AI ========== */
-/* 简单但“靠谱”的走法生成逻辑：
-   1) 如有立即获胜手，直接下
-   2) 如对手有立即获胜手，优先堵
-   3) 否则用启发式评分（进攻-防守）在候选点中选择最优
-   候选点 = 离任何棋子曼哈顿距离<=2的空位，避免AI瞎走边角
-*/
-function aiMove() {
-  if (gameOver) return;
-  if (currentTurn !== aiSide) return;
-
-  let move = null;
-
-  // 第一手（若AI先手），直接中心
-  if (!firstMoveDone && countStones() === 0 && aiSide === BLACK) {
-    const c = Math.floor(SIZE/2);
-    placeAI(c, c);
-    return;
-  }
+/* ========== 放子/胜负/满盘 ========== */
+function place(x,y,color){
+  board[x][y] = color;
   firstMoveDone = true;
-
-  const cand = candidateMoves();
-
-  // 1) 胜手
-  for (const {x,y} of cand) {
-    board[x][y] = aiSide;
-    if (isFive(x,y,aiSide)) { board[x][y] = 0; move = {x,y}; break; }
-    board[x][y] = 0;
-  }
-  if (move) { placeAI(move.x, move.y); return; }
-
-  // 2) 堵对方胜手
-  const opp = opponentOf(aiSide);
-  for (const {x,y} of cand) {
-    board[x][y] = opp;
-    if (isFive(x,y,opp)) { board[x][y] = 0; move = {x,y}; break; }
-    board[x][y] = 0;
-  }
-  if (move) { placeAI(move.x, move.y); return; }
-
-  // 3) 启发式评分（进攻 - 防守），“正确开局”倾向中心
-  let bestScore = -Infinity;
-  for (const {x,y} of cand) {
-    const s = scoreAt(x,y, aiSide) - scoreAt(x,y, opp) + centerBias(x,y);
-    if (s > bestScore) { bestScore = s; move = {x,y}; }
-  }
-  if (!move) {
-    // 极端情况下无候选（例如只有孤子很远），就全盘扫一遍找分最高
-    for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) if (board[x][y]===0) {
-      const s = scoreAt(x,y, aiSide) - scoreAt(x,y, opp) + centerBias(x,y);
-      if (s > bestScore) { bestScore = s; move = {x,y}; }
-    }
-  }
-  if (move) placeAI(move.x, move.y);
 }
 
-function placeAI(x,y) {
-  board[x][y] = aiSide;
-  if (checkWin(x,y,aiSide)) { draw(); alert("AI 赢了！"); gameOver = true; return; }
-  currentTurn = opponentOf(aiSide);
-  draw(); // 玩家回合会显示红点提示
+function isFull(){
+  for (let x=0;x<SIZE;x++)
+    for (let y=0;y<SIZE;y++)
+      if (board[x][y] === 0) return false;
+  return true;
 }
 
-function opponentOf(side){ return side === BLACK ? WHITE : BLACK; }
-function countStones() {
-  let n=0;
-  for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) if (board[x][y]!==0) n++;
-  return n;
-}
+function inBoard(x,y){ return x>=0 && x<SIZE && y>=0 && y<SIZE; }
 
-function candidateMoves() {
-  const res = [];
-  // 若棋盘太空，则把中心附近作为候选
-  if (countStones() === 0) {
-    const c = Math.floor(SIZE/2);
-    for (let dx=-1; dx<=1; dx++)
-      for (let dy=-1; dy<=1; dy++) {
-        const x=c+dx, y=c+dy;
-        if (isInside(x,y) && board[x][y]===0) res.push({x,y});
-      }
-    return res;
-  }
-  // 否则收集与任一已有棋子曼哈顿距离<=2的空位
-  let has = false;
-  for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) if (board[x][y]!==0) {
-    has = true;
-    for (let dx=-2; dx<=2; dx++)
-      for (let dy=-2; dy<=2; dy++) {
-        const nx=x+dx, ny=y+dy;
-        if (!isInside(nx,ny) || board[nx][ny]!==0) continue;
-        if (Math.abs(dx)+Math.abs(dy) <= 2) res.push({x:nx, y:ny});
-      }
-  }
-  if (!has) return [{x:Math.floor(SIZE/2), y:Math.floor(SIZE/2)}];
-  // 去重
-  const key = new Set();
-  const out = [];
-  for (const m of res) {
-    const k = m.x + "," + m.y;
-    if (!key.has(k)) { key.add(k); out.push(m); }
-  }
-  return out;
-}
-
-/* ========== 评估与胜负 ========== */
-const DIRS = [[1,0],[0,1],[1,1],[1,-1]];
-
-function isFive(x,y,side){ return checkWin(x,y,side); }
-
-function checkWin(x, y, side) {
-  for (const [dx,dy] of DIRS) {
-    let c = 1;
-    // 正向
-    for (let k=1;k<5;k++){
-      const nx=x+dx*k, ny=y+dy*k;
-      if (!isInside(nx,ny) || board[nx][ny]!==side) break;
-      c++;
-    }
-    // 反向
-    for (let k=1;k<5;k++){
-      const nx=x-dx*k, ny=y-dy*k;
-      if (!isInside(nx,ny) || board[nx][ny]!==side) break;
-      c++;
-    }
-    if (c>=5) return true;
+/* 检查是否五连 */
+function checkWin(x,y,color){
+  const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+  for (const [dx,dy] of dirs){
+    let cnt = 1;
+    let i=x+dx, j=y+dy;
+    while(inBoard(i,j) && board[i][j]===color){ cnt++; i+=dx; j+=dy; }
+    i=x-dx; j=y-dy;
+    while(inBoard(i,j) && board[i][j]===color){ cnt++; i-=dx; j-=dy; }
+    if (cnt>=5) return true;
   }
   return false;
 }
 
-function scoreAt(x,y,side) {
-  // 假着
-  board[x][y] = side;
-  let s = evaluateSide(side);
-  board[x][y] = 0;
-  return s;
+/* ========== AI 实现（强化版） ========== */
+/*
+  思路：
+  1) 迭代加深 + αβ剪枝 + 置换表（Zobrist）
+  2) 招法生成：仅取与现有子距离<=2的空位；排序按战术价值
+  3) 杀手与威胁优先：我方必胜 > 对方必胜 > 双威胁 > 强形（活四/冲四/活三）
+  4) 评估：按形势表打分（活四、冲四、活三、眠三、活二等），黑白对称
+*/
+
+const MAX_DEPTH_BASE = 4;        // 基础搜索深度（可视性能调 3~5）
+const CAND_LIMIT = 16;           // 每层保留的候选点数量上限
+const NEAR_DIST = 2;             // 候选搜索半径（曼哈顿）
+const WIN_SCORE = 1e9;
+const TT = new Map();            // 置换表
+
+// Zobrist 随机表
+const ZR = (function(){
+  const rng = mulberry32(20251112);
+  const t = [];
+  for(let c=1;c<=2;c++){
+    t[c] = Array.from({length:SIZE}, ()=>Array.from({length:SIZE}, ()=>rand64(rng)));
+  }
+  const sideKey = rand64(rng);
+  return {t, sideKey};
+})();
+function mulberry32(a){ return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;}; }
+function rand64(rng){
+  const hi = Math.floor(rng()*0xFFFFFFFF)>>>0;
+  const lo = Math.floor(rng()*0xFFFFFFFF)>>>0;
+  // 用 BigInt 存 64bit
+  return (BigInt(hi)<<32n) ^ BigInt(lo);
+}
+function computeHash(){
+  let h = 0n;
+  for (let x=0;x<SIZE;x++)
+    for (let y=0;y<SIZE;y++){
+      const c = board[x][y];
+      if (c) h ^= ZR.t[c][x][y];
+    }
+  return h;
 }
 
-function evaluateSide(side) {
+/* —— 形势评估：统计四向模式 —— */
+const DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+
+const PAT_SCORES = {
+  // 大致权值（黑白一致，最终用 差分 计算）
+  FIVE: 10000000,
+  OPEN_FOUR: 1000000,     // 活四
+  FOUR: 100000,           // 冲四（半活）
+  OPEN_THREE: 8000,       // 活三
+  SLEEP_THREE: 1500,      // 眠三
+  OPEN_TWO: 200,          // 活二
+  SLEEP_TWO: 50,          // 眠二
+};
+
+function lineCount(x,y,dx,dy,color){
+  // 以 (x,y) 为起点，数同色连续子
+  let cnt=0, i=x, j=y;
+  while(inBoard(i,j) && board[i][j]===color){ cnt++; i+=dx; j+=dy; }
+  return cnt;
+}
+
+// 检查在(x,y)假设落子color后的局部模式（用于威胁检测与排序）
+function localPatternScore(x,y,color){
+  // 临时落子
+  board[x][y] = color;
+  const score = shapeScore(color) - shapeScore(3-color);
+  board[x][y] = 0;
+  return score;
+}
+
+// 全局形势评估（用于静态估值）
+function evaluate(colorToMove){
+  // 使用“黑分 - 白分”，再让轮到方略微加成（鼓励先手势）
+  const sBlack = shapeScore(BLACK);
+  const sWhite = shapeScore(WHITE);
+  let val = sBlack - sWhite;
+  val += (colorToMove===BLACK ? 50 : -50);
+  return val;
+}
+
+function shapeScore(color){
+  // 遍历全盘统计各种形
   let total = 0;
-  for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) {
-    if (board[x][y] !== side) continue;
-    for (const [dx,dy] of DIRS) {
-      // 统计该子在方向上的连续数+两端封堵情况
-      let count = 1, block = 0;
-      // 正向
-      for (let k=1;k<5;k++){
-        const nx=x+dx*k, ny=y+dy*k;
-        if (!isInside(nx,ny)) { block++; break; }
-        if (board[nx][ny] === side) count++;
-        else if (board[nx][ny] === 0) break;
-        else { block++; break; }
+  // 快速胜负：有五连直接返回
+  if (hasFive(color)) return PAT_SCORES.FIVE;
+
+  let open4=0, four=0, open3=0, s3=0, open2=0, s2=0;
+
+  // 统计所有空位的潜力：如果在空位落子会形成的强形，用以累计势
+  const empties = genCandidateAll();
+  for (const [x,y] of empties){
+    // 仅看附近是否有己方子，否则忽略
+    if (!nearAny(x,y)) continue;
+    board[x][y] = color;
+
+    // 四向扫描
+    let hasOF=0, hasF=0, hasO3=0, hasS3=0, hasO2=0, hasS2=0;
+    for (const [dx,dy] of DIRS){
+      const len1 = countDir(x,y,dx,dy,color);
+      const len2 = countDir(x,y,-dx,-dy,color);
+      const cnt = 1 + len1 + len2;
+
+      // 两端空否
+      const end1 = endCell(x + (len1+1)*dx, y + (len1+1)*dy);
+      const end2 = endCell(x - (len2+1)*dx, y - (len2+1)*dy);
+
+      if (cnt>=5){ hasOF=1; continue; }
+
+      if (cnt===4){
+        const open = (end1===0) + (end2===0);
+        if (open===2) hasOF=1; // 活四
+        else if (open===1) hasF=1; // 冲四
+      } else if (cnt===3){
+        const open = (end1===0) + (end2===0);
+        if (open===2) hasO3=1;
+        else if (open===1) hasS3=1;
+      } else if (cnt===2){
+        const open = (end1===0) + (end2===0);
+        if (open===2) hasO2=1;
+        else if (open===1) hasS2=1;
       }
-      // 反向
-      for (let k=1;k<5;k++){
-        const nx=x-dx*k, ny=y-dy*k;
-        if (!isInside(nx,ny)) { block++; break; }
-        if (board[nx][ny] === side) count++;
-        else if (board[nx][ny] === 0) break;
-        else { block++; break; }
-      }
-      // 按常见启发式打分
-      if (count >= 5) total += 1000000;
-      else if (count === 4 && block === 0) total += 10000;   // 活四
-      else if (count === 4 && block === 1) total += 1200;    // 冲四
-      else if (count === 3 && block === 0) total += 450;     // 活三
-      else if (count === 3 && block === 1) total += 80;      // 眠三
-      else if (count === 2 && block === 0) total += 25;      // 活二
     }
+
+    if (hasOF) open4++;
+    if (hasF)  four++;
+    if (hasO3) open3++;
+    if (hasS3) s3++;
+    if (hasO2) open2++;
+    if (hasS2) s2++;
+
+    board[x][y] = 0;
   }
+
+  total += open4 * PAT_SCORES.OPEN_FOUR;
+  total += four  * PAT_SCORES.FOUR;
+  total += open3 * PAT_SCORES.OPEN_THREE;
+  total += s3    * PAT_SCORES.SLEEP_THREE;
+  total += open2 * PAT_SCORES.OPEN_TWO;
+  total += s2    * PAT_SCORES.SLEEP_TWO;
+
   return total;
 }
 
-// 中央偏好，保证“正确开局”风格与中盘更合理的选点（越靠中心加分越多）
-function centerBias(x,y){
-  const c = Math.floor(SIZE/2);
-  const dx = x - c, dy = y - c;
-  const d2 = dx*dx + dy*dy;
-  // d2 越小越好；这个函数让中心附近更优
-  return Math.max(0, 120 - d2*8);
+function hasFive(color){
+  for (let x=0;x<SIZE;x++)
+    for (let y=0;y<SIZE;y++)
+      if (board[x][y]===color){
+        for (const [dx,dy] of DIRS){
+          let i=x, j=y, cnt=0;
+          while(inBoard(i,j) && board[i][j]===color){ cnt++; i+=dx; j+=dy; }
+          if (cnt>=5) return true;
+        }
+      }
+  return false;
 }
+
+function countDir(x,y,dx,dy,color){
+  let i=x+dx, j=y+dy, c=0;
+  while(inBoard(i,j) && board[i][j]===color){ c++; i+=dx; j+=dy; }
+  return c;
+}
+function endCell(x,y){
+  if (!inBoard(x,y)) return -1; // 越界
+  return board[x][y];           // 0 空，1黑，2白
+}
+
+/* —— 候选生成 —— */
+function nearAny(x,y){
+  for (let dx=-NEAR_DIST; dx<=NEAR_DIST; dx++)
+    for (let dy=-NEAR_DIST; dy<=NEAR_DIST; dy++){
+      if (dx===0 && dy===0) continue;
+      const i=x+dx, j=y+dy;
+      if (inBoard(i,j) && board[i][j]!==0) return true;
+    }
+  return false;
+}
+
+function genCandidateAll(){
+  const list = [];
+  for (let x=0;x<SIZE;x++)
+    for (let y=0;y<SIZE;y++)
+      if (board[x][y]===0) list.push([x,y]);
+  return list;
+}
+
+function genCandidates(color){
+  // 空盘第一招：中心
+  if (!firstMoveDone){
+    return [[7,7]];
+  }
+
+  // 集中在邻近空位
+  const raw = [];
+  for (let x=0;x<SIZE;x++)
+    for (let y=0;y<SIZE;y++)
+      if (board[x][y]===0 && nearAny(x,y)) raw.push([x,y]);
+
+  // 战术分数（用于排序）
+  const scored = [];
+  for (const [x,y] of raw){
+    const me = localPatternScore(x,y,color);
+    const opp = localPatternScore(x,y,3-color);
+    // 威胁优先：对我方有利的高分 + 对手威胁的阻止分
+    const killMe   = willWinIfPlace(x,y,color) ? 1e8 : 0;
+    const killOpp  = willWinIfPlace(x,y,3-color) ? 5e7 : 0; // 防一手也很重要
+    const dblMe    = createsDoubleThreat(x,y,color) ? 2e7 : 0;
+    const dblOpp   = createsDoubleThreat(x,y,3-color) ? 1e7 : 0; // 拆双权重
+
+    const s = killMe + killOpp + dblMe + dblOpp + me + 0.6*opp;
+    scored.push({x,y,s});
+  }
+
+  scored.sort((a,b)=>b.s - a.s);
+  const cut = scored.slice(0, Math.min(CAND_LIMIT, scored.length));
+  return cut.map(o=>[o.x,o.y]);
+}
+
+/* —— 战术检测 —— */
+function willWinIfPlace(x,y,color){
+  board[x][y] = color;
+  const win = checkWin(x,y,color);
+  board[x][y] = 0;
+  return win;
+}
+
+function createsDoubleThreat(x,y,color){
+  // 判断落子后是否产生“双威胁”（双四/活三+冲四/双活三之一）
+  board[x][y] = color;
+  let open4=0, four=0, open3=0;
+
+  for (const [dx,dy] of DIRS){
+    const len1 = countDir(x,y,dx,dy,color);
+    const len2 = countDir(x,y,-dx,-dy,color);
+    const cnt = 1 + len1 + len2;
+
+    const end1 = endCell(x + (len1+1)*dx, y + (len1+1)*dy);
+    const end2 = endCell(x - (len2+1)*dx, y - (len2+1)*dy);
+    const open = (end1===0) + (end2===0);
+
+    if (cnt>=5){ board[x][y]=0; return true; }
+    if (cnt===4){
+      if (open===2) open4++;
+      else if (open===1) four++;
+    }else if (cnt===3){
+      if (open===2) open3++;
+    }
+  }
+  board[x][y] = 0;
+
+  // 双四、四+活三、双活三 都算“双打”
+  if (open4>=2) return true;
+  if (open4>=1 && (four>=1 || open3>=1)) return true;
+  if (open3>=2) return true;
+  return false;
+}
+
+/* —— α-β + 迭代加深 —— */
+function aiMove(){
+  if (gameOver) return;
+
+  // 先手第一手：中心
+  if (!firstMoveDone && aiSide===BLACK){
+    place(7,7,aiSide);
+    if (checkWin(7,7,aiSide)) { gameOver=true; draw(); alert("AI胜！"); return; }
+    currentTurn = 3 - currentTurn;
+    draw();
+    return;
+  }
+
+  const best = searchRoot(aiSide);
+  const [bx,by] = best.move || fallbackRandom();
+  place(bx,by,aiSide);
+
+  if (checkWin(bx,by,aiSide)) {
+    gameOver = true; draw(); alert("AI胜！");
+    return;
+  }
+  if (isFull()) { gameOver = true; draw(); alert("平局！"); return; }
+
+  currentTurn = 3 - currentTurn;
+  draw();
+
+  function fallbackRandom(){
+    // 极端情况下没有候选（几乎不会）
+    for (let x=0;x<SIZE;x++)
+      for (let y=0;y<SIZE;y++)
+        if (board[x][y]===0) return [x,y];
+    return [7,7];
+  }
+}
+
+function searchRoot(color){
+  TT.clear();
+  const hash0 = computeHash();
+
+  // 迭代加深
+  let best = {score:-Infinity, move:null};
+  const maxDepth = MAX_DEPTH_BASE;
+
+  // 根节点先做战术快速判断：1) 我方杀一手 2) 挡对方杀一手
+  const cand = genCandidates(color);
+  for (const [x,y] of cand){
+    if (willWinIfPlace(x,y,color)) return {score:WIN_SCORE, move:[x,y]};
+  }
+  for (const [x,y] of cand){
+    if (willWinIfPlace(x,y,3-color)) return {score:WIN_SCORE-1, move:[x,y]}; // 立即挡
+  }
+
+  for (let depth=2; depth<=maxDepth; depth++){
+    let alpha = -Infinity, beta = +Infinity;
+
+    for (const [x,y] of cand){
+      board[x][y] = color;
+      const sc = -alphabeta(depth-1, -beta, -alpha, 3-color, hashAfter(hash0,x,y,color));
+      board[x][y] = 0;
+      if (sc > alpha){
+        alpha = sc;
+        best = {score: sc, move:[x,y]};
+      }
+    }
+  }
+  return best;
+}
+
+function hashAfter(h, x,y,color){
+  let nh = h ^ ZR.t[color][x][y];
+  return nh;
+}
+
+function ttKey(h, depth, alpha, beta){
+  // 拼接为字符串 key（BigInt 不能作 Map 复合键，这里简化）
+  return `${h.toString(16)}|${depth}|${alpha}|${beta}`;
+}
+
+function alphabeta(depth, alpha, beta, color, h){
+  // 置换表
+  const key = ttKey(h, depth, alpha, beta);
+  if (TT.has(key)) return TT.get(key);
+
+  // 终止条件
+  if (depth===0){
+    const ev = evaluate(color);
+    TT.set(key, ev);
+    return ev;
+  }
+
+  // 强制战术：立即胜或立即挡
+  {
+    const candsQuick = genCandidates(color);
+    for (const [x,y] of candsQuick){
+      if (willWinIfPlace(x,y,color)) { TT.set(key, WIN_SCORE - (MAX_DEPTH_BASE-depth)); return WIN_SCORE - (MAX_DEPTH_BASE-depth); }
+    }
+    for (const [x,y] of candsQuick){
+      if (willWinIfPlace(x,y,3-color)) {
+        // 这里不直接返回，但该着法优先
+      }
+    }
+  }
+
+  // 正常候选并排序
+  const cands = genCandidates(color);
+  if (cands.length===0){
+    const ev = evaluate(color);
+    TT.set(key, ev);
+    return ev;
+  }
+
+  let best = -Infinity;
+  for (const [x,y] of cands){
+    board[x][y] = color;
+    const child = -alphabeta(depth-1, -beta, -alpha, 3-color, hashAfter(h,x,y,color));
+    board[x][y] = 0;
+
+    if (child > best) best = child;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break; // β剪枝
+  }
+  TT.set(key, best);
+  return best;
+}
+
+/* ========== 启动 ========== */
+resetGame(starter);
 </script>
 </body>
 </html>
