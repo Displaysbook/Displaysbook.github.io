@@ -1,97 +1,373 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-    <title>Audio Visualization Example</title>
-    <style>
-        canvas {
-            border: 1px solid black;
-            display: block;
-            margin: 0 auto;
-        }
-    </style>
+<meta charset="UTF-8" />
+<title>五子棋 AI（可选先手 + 红点提示 + 正确开局）</title>
+<style>
+  body { text-align:center; background:#f5f5dc; font-family:"Microsoft YaHei"; }
+  .toolbar { margin-top:14px; display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap; }
+  label { cursor:pointer; }
+  canvas { background:#deb887; margin-top:12px; box-shadow:0 0 10px rgba(0,0,0,.45); cursor:pointer; }
+  button { padding:8px 16px; font-size:15px; cursor:pointer; }
+  .legend { font-size:13px; color:#333; margin-top:6px; }
+</style>
 </head>
 <body>
-    <h1>Audio Visualization Example</h1>
-    <video id="video" width="640" height="480" autoplay></video>
-    <button id="start">Start Capture</button>
-    <button id="stop">Stop Capture</button>
-    <canvas id="canvas" width="640" height="100"></canvas>
+<h1>五子棋 AI</h1>
 
-    <script>
-        const video = document.getElementById('video');
-        const startButton = document.getElementById('start');
-        const stopButton = document.getElementById('stop');
-        const canvas = document.getElementById('canvas');
-        const canvasContext = canvas.getContext('2d');
-        let mediaStream = null;
-        let audioContext = null;
-        let analyser = null;
-        let source = null;
+<div class="toolbar">
+  <div>
+    <strong>先手：</strong>
+    <label><input type="radio" name="starter" value="human" checked> 玩家先手（黑）</label>
+    <label style="margin-left:8px;"><input type="radio" name="starter" value="ai"> AI先手（黑）</label>
+  </div>
+  <button id="btnReset">重新开始</button>
+</div>
+<div class="legend">红色小点 = 当前“轮到的玩家”的落子提示（只在玩家回合显示）</div>
 
-        startButton.addEventListener('click', async () => {
-            try {
-                mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: true,
-                    audio: true
-                });
-                video.srcObject = mediaStream;
+<canvas id="board" width="600" height="600"></canvas>
 
-                // Initialize audio context and analyser
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                source = audioContext.createMediaStreamSource(mediaStream);
-                analyser = audioContext.createAnalyser();
-                source.connect(analyser);
-                analyser.fftSize = 2048;
-                const bufferLength = analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
+<script>
+/* ========== 基本参数 ========== */
+const SIZE = 15;              // 15x15
+const GRID = 40;              // 每格像素
+const CANVAS = document.getElementById("board");
+const CTX = CANVAS.getContext("2d");
 
-                // Function to draw the waveform
-                function draw() {
-                    requestAnimationFrame(draw);
-                    analyser.getByteTimeDomainData(dataArray);
+const BLACK = 1;              // 1 = 黑子（先手）
+const WHITE = 2;              // 2 = 白子（后手）
 
-                    canvasContext.fillStyle = 'rgb(200, 200, 200)';
-                    canvasContext.fillRect(0, 0, canvas.width, canvas.height);
+/* ========== 状态 ========== */
+let board;                    // [x][y] 0空/1黑/2白
+let gameOver = false;
+let currentTurn = BLACK;      // 当前轮到谁（1黑 2白）
+let humanSide = BLACK;        // 玩家扮演的颜色
+let aiSide = WHITE;           // AI 扮演的颜色
+let firstMoveDone = false;    // 是否已下过第一手（用于AI中心开局）
+let hoverCell = null;         // {x,y} 玩家回合的红点提示位置（为空=使用默认中心提示）
+let starter = "human";        // "human" | "ai"
 
-                    canvasContext.lineWidth = 2;
-                    canvasContext.strokeStyle = 'rgb(0, 0, 0)';
-                    canvasContext.beginPath();
+/* ========== 初始化与UI ========== */
+document.getElementById("btnReset").onclick = () => {
+  const radios = document.querySelectorAll('input[name="starter"]');
+  for (const r of radios) if (r.checked) starter = r.value;
+  resetGame(starter);
+};
 
-                    const sliceWidth = canvas.width * 1.0 / bufferLength;
-                    let x = 0;
+CANVAS.addEventListener("mousemove", onMouseMove);
+CANVAS.addEventListener("mouseleave", () => { hoverCell = null; draw(); });
+CANVAS.addEventListener("click", onClick);
 
-                    for (let i = 0; i < bufferLength; i++) {
-                        const v = dataArray[i] / 128.0; // normalize value
-                        const y = v * canvas.height / 2;
-                        if (i === 0) {
-                            canvasContext.moveTo(x, y);
-                        } else {
-                            canvasContext.lineTo(x, y);
-                        }
-                        x += sliceWidth;
-                    }
+resetGame(starter);
 
-                    canvasContext.lineTo(canvas.width, canvas.height / 2);
-                    canvasContext.stroke();
-                }
+/* ========== 绘制 ========== */
+function drawGrid() {
+  CTX.clearRect(0,0,600,600);
+  CTX.strokeStyle = "#000";
+  for (let i=0;i<SIZE;i++) {
+    // 横线
+    CTX.beginPath();
+    CTX.moveTo(GRID/2, GRID/2 + i*GRID);
+    CTX.lineTo(GRID/2 + (SIZE-1)*GRID, GRID/2 + i*GRID);
+    CTX.stroke();
+    // 竖线
+    CTX.beginPath();
+    CTX.moveTo(GRID/2 + i*GRID, GRID/2);
+    CTX.lineTo(GRID/2 + i*GRID, GRID/2 + (SIZE-1)*GRID);
+    CTX.stroke();
+  }
+  // 星位（可选，增强观感）
+  const star = [
+    [3,3],[11,3],[3,11],[11,11],[7,7]
+  ];
+  CTX.fillStyle = "#000";
+  for (const [sx,sy] of star) {
+    const cx = toPixel(sx), cy = toPixel(sy);
+    CTX.beginPath(); CTX.arc(cx,cy,3,0,Math.PI*2); CTX.fill();
+  }
+}
 
-                draw();
+function drawPieces() {
+  for (let x=0;x<SIZE;x++)
+    for (let y=0;y<SIZE;y++)
+      if (board[x][y] !== 0) drawPiece(x,y, board[x][y] === BLACK);
+}
 
-            } catch (err) {
-                console.error('Error: ' + err);
-            }
-        });
+function drawPiece(x, y, isBlack) {
+  const cx = toPixel(x), cy = toPixel(y);
+  const r = 16;
+  const g = CTX.createRadialGradient(cx,cy,r, cx-2,cy-2,2);
+  g.addColorStop(0, isBlack ? "#0a0a0a" : "#f9f9f9");
+  g.addColorStop(1, isBlack ? "#636766" : "#d1d1d1");
+  CTX.fillStyle = g;
+  CTX.beginPath();
+  CTX.arc(cx, cy, r, 0, Math.PI*2);
+  CTX.fill();
+}
 
-        stopButton.addEventListener('click', () => {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-                video.srcObject = null;
-                if (audioContext) {
-                    audioContext.close();
-                }
-                mediaStream = null;
-            }
-        });
-    </script>
+function drawHoverDot() {
+  // 仅玩家回合显示红点提示；如果没有鼠标悬停，默认给中心点提示
+  if (gameOver) return;
+  if (currentTurn !== humanSide) return;
+
+  let hx, hy;
+  if (hoverCell && isInside(hoverCell.x, hoverCell.y) && board[hoverCell.x][hoverCell.y] === 0) {
+    hx = hoverCell.x; hy = hoverCell.y;
+  } else {
+    // 默认中心提示（空盘、人类先手时尤为直观）
+    hx = Math.floor(SIZE/2);
+    hy = Math.floor(SIZE/2);
+    if (board[hx][hy] !== 0) { return; } // 中心被占就不画
+  }
+  const cx = toPixel(hx), cy = toPixel(hy);
+  CTX.beginPath();
+  CTX.fillStyle = "red";
+  CTX.arc(cx, cy, 4.2, 0, Math.PI*2);
+  CTX.fill();
+}
+
+function draw() {
+  drawGrid();
+  drawPieces();
+  drawHoverDot();
+}
+
+/* ========== 坐标/边界 ========== */
+function toPixel(i) { return GRID/2 + i*GRID; }
+function fromPixel(px) { return Math.round((px - GRID/2) / GRID); }
+function isInside(x,y) { return x>=0 && y>=0 && x<SIZE && y<SIZE; }
+
+/* ========== 交互 ========== */
+function onMouseMove(e) {
+  const rect = CANVAS.getBoundingClientRect();
+  const x = fromPixel(e.clientX - rect.left);
+  const y = fromPixel(e.clientY - rect.top);
+  if (!isInside(x,y)) { hoverCell = null; draw(); return; }
+  hoverCell = {x,y};
+  draw();
+}
+
+function onClick(e) {
+  if (gameOver) return;
+  if (currentTurn !== humanSide) return;
+
+  const rect = CANVAS.getBoundingClientRect();
+  const x = fromPixel(e.clientX - rect.left);
+  const y = fromPixel(e.clientY - rect.top);
+  if (!isInside(x,y) || board[x][y] !== 0) return;
+
+  // 玩家落子
+  board[x][y] = humanSide;
+  if (checkWin(x,y,humanSide)) { draw(); alert("你赢了！"); gameOver = true; return; }
+
+  // 轮到AI，无延迟
+  currentTurn = opponentOf(humanSide);
+  draw();
+  aiMove();
+}
+
+/* ========== 重置与先手 ========== */
+function resetGame(whoStarts) {
+  board = Array.from({length: SIZE}, () => Array(SIZE).fill(0));
+  gameOver = false;
+  firstMoveDone = false;
+  hoverCell = null;
+
+  if (whoStarts === "ai") {
+    humanSide = WHITE;  // 人类后手 = 白
+    aiSide = BLACK;     // AI先手 = 黑
+    currentTurn = aiSide;
+    draw();
+    // 正确开局：AI第一手落中心（Tengen）
+    aiMove();           // 立即下（无延迟）
+  } else {
+    humanSide = BLACK;  // 人类先手 = 黑
+    aiSide = WHITE;     // AI后手 = 白
+    currentTurn = humanSide;
+    draw();             // 玩家回合会看到中心的红点提示
+  }
+}
+
+/* ========== AI ========== */
+/* 简单但“靠谱”的走法生成逻辑：
+   1) 如有立即获胜手，直接下
+   2) 如对手有立即获胜手，优先堵
+   3) 否则用启发式评分（进攻-防守）在候选点中选择最优
+   候选点 = 离任何棋子曼哈顿距离<=2的空位，避免AI瞎走边角
+*/
+function aiMove() {
+  if (gameOver) return;
+  if (currentTurn !== aiSide) return;
+
+  let move = null;
+
+  // 第一手（若AI先手），直接中心
+  if (!firstMoveDone && countStones() === 0 && aiSide === BLACK) {
+    const c = Math.floor(SIZE/2);
+    placeAI(c, c);
+    return;
+  }
+  firstMoveDone = true;
+
+  const cand = candidateMoves();
+
+  // 1) 胜手
+  for (const {x,y} of cand) {
+    board[x][y] = aiSide;
+    if (isFive(x,y,aiSide)) { board[x][y] = 0; move = {x,y}; break; }
+    board[x][y] = 0;
+  }
+  if (move) { placeAI(move.x, move.y); return; }
+
+  // 2) 堵对方胜手
+  const opp = opponentOf(aiSide);
+  for (const {x,y} of cand) {
+    board[x][y] = opp;
+    if (isFive(x,y,opp)) { board[x][y] = 0; move = {x,y}; break; }
+    board[x][y] = 0;
+  }
+  if (move) { placeAI(move.x, move.y); return; }
+
+  // 3) 启发式评分（进攻 - 防守），“正确开局”倾向中心
+  let bestScore = -Infinity;
+  for (const {x,y} of cand) {
+    const s = scoreAt(x,y, aiSide) - scoreAt(x,y, opp) + centerBias(x,y);
+    if (s > bestScore) { bestScore = s; move = {x,y}; }
+  }
+  if (!move) {
+    // 极端情况下无候选（例如只有孤子很远），就全盘扫一遍找分最高
+    for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) if (board[x][y]===0) {
+      const s = scoreAt(x,y, aiSide) - scoreAt(x,y, opp) + centerBias(x,y);
+      if (s > bestScore) { bestScore = s; move = {x,y}; }
+    }
+  }
+  if (move) placeAI(move.x, move.y);
+}
+
+function placeAI(x,y) {
+  board[x][y] = aiSide;
+  if (checkWin(x,y,aiSide)) { draw(); alert("AI 赢了！"); gameOver = true; return; }
+  currentTurn = opponentOf(aiSide);
+  draw(); // 玩家回合会显示红点提示
+}
+
+function opponentOf(side){ return side === BLACK ? WHITE : BLACK; }
+function countStones() {
+  let n=0;
+  for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) if (board[x][y]!==0) n++;
+  return n;
+}
+
+function candidateMoves() {
+  const res = [];
+  // 若棋盘太空，则把中心附近作为候选
+  if (countStones() === 0) {
+    const c = Math.floor(SIZE/2);
+    for (let dx=-1; dx<=1; dx++)
+      for (let dy=-1; dy<=1; dy++) {
+        const x=c+dx, y=c+dy;
+        if (isInside(x,y) && board[x][y]===0) res.push({x,y});
+      }
+    return res;
+  }
+  // 否则收集与任一已有棋子曼哈顿距离<=2的空位
+  let has = false;
+  for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) if (board[x][y]!==0) {
+    has = true;
+    for (let dx=-2; dx<=2; dx++)
+      for (let dy=-2; dy<=2; dy++) {
+        const nx=x+dx, ny=y+dy;
+        if (!isInside(nx,ny) || board[nx][ny]!==0) continue;
+        if (Math.abs(dx)+Math.abs(dy) <= 2) res.push({x:nx, y:ny});
+      }
+  }
+  if (!has) return [{x:Math.floor(SIZE/2), y:Math.floor(SIZE/2)}];
+  // 去重
+  const key = new Set();
+  const out = [];
+  for (const m of res) {
+    const k = m.x + "," + m.y;
+    if (!key.has(k)) { key.add(k); out.push(m); }
+  }
+  return out;
+}
+
+/* ========== 评估与胜负 ========== */
+const DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+
+function isFive(x,y,side){ return checkWin(x,y,side); }
+
+function checkWin(x, y, side) {
+  for (const [dx,dy] of DIRS) {
+    let c = 1;
+    // 正向
+    for (let k=1;k<5;k++){
+      const nx=x+dx*k, ny=y+dy*k;
+      if (!isInside(nx,ny) || board[nx][ny]!==side) break;
+      c++;
+    }
+    // 反向
+    for (let k=1;k<5;k++){
+      const nx=x-dx*k, ny=y-dy*k;
+      if (!isInside(nx,ny) || board[nx][ny]!==side) break;
+      c++;
+    }
+    if (c>=5) return true;
+  }
+  return false;
+}
+
+function scoreAt(x,y,side) {
+  // 假着
+  board[x][y] = side;
+  let s = evaluateSide(side);
+  board[x][y] = 0;
+  return s;
+}
+
+function evaluateSide(side) {
+  let total = 0;
+  for (let x=0;x<SIZE;x++) for (let y=0;y<SIZE;y++) {
+    if (board[x][y] !== side) continue;
+    for (const [dx,dy] of DIRS) {
+      // 统计该子在方向上的连续数+两端封堵情况
+      let count = 1, block = 0;
+      // 正向
+      for (let k=1;k<5;k++){
+        const nx=x+dx*k, ny=y+dy*k;
+        if (!isInside(nx,ny)) { block++; break; }
+        if (board[nx][ny] === side) count++;
+        else if (board[nx][ny] === 0) break;
+        else { block++; break; }
+      }
+      // 反向
+      for (let k=1;k<5;k++){
+        const nx=x-dx*k, ny=y-dy*k;
+        if (!isInside(nx,ny)) { block++; break; }
+        if (board[nx][ny] === side) count++;
+        else if (board[nx][ny] === 0) break;
+        else { block++; break; }
+      }
+      // 按常见启发式打分
+      if (count >= 5) total += 1000000;
+      else if (count === 4 && block === 0) total += 10000;   // 活四
+      else if (count === 4 && block === 1) total += 1200;    // 冲四
+      else if (count === 3 && block === 0) total += 450;     // 活三
+      else if (count === 3 && block === 1) total += 80;      // 眠三
+      else if (count === 2 && block === 0) total += 25;      // 活二
+    }
+  }
+  return total;
+}
+
+// 中央偏好，保证“正确开局”风格与中盘更合理的选点（越靠中心加分越多）
+function centerBias(x,y){
+  const c = Math.floor(SIZE/2);
+  const dx = x - c, dy = y - c;
+  const d2 = dx*dx + dy*dy;
+  // d2 越小越好；这个函数让中心附近更优
+  return Math.max(0, 120 - d2*8);
+}
+</script>
 </body>
 </html>
