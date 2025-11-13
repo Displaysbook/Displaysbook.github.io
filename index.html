@@ -2,53 +2,44 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>五子棋 AI（贪心版）</title>
+<title>五子棋 AI</title>
 <style>
-body {
-  text-align:center;
-  background:#f5f5dc;
-  font-family:"Microsoft YaHei";
-}
-canvas {
-  background:#deb887;
-  box-shadow:0 0 10px rgba(0,0,0,.45);
-  cursor:pointer;
-  margin-top:12px;
-}
-button {
-  margin-top:10px; padding:6px 12px;
-}
+body { text-align:center; background:#f5f5dc; font-family:"Microsoft YaHei"; }
+canvas { background:#deb887; margin-top:12px; box-shadow:0 0 10px rgba(0,0,0,.45); cursor:pointer; }
 #status { margin-top:10px; font-weight:bold; }
+button { margin-top:10px; padding:6px 12px; }
 </style>
 </head>
 <body>
 
-<h1>五子棋 AI</h1>
+<h1>五子棋 AI（Minimax = 2）</h1>
 <button id="restart">重新开始</button>
-
 <canvas id="board" width="640" height="640"></canvas>
 <div id="status"></div>
 
 <script>
+/* ---------------- 常量 ---------------- */
 const N=15, EMPTY=0, BLACK=1, WHITE=-1;
-let board=[], turn=BLACK, gameOver=false, last=null;
-let aiColor=WHITE, humanColor=BLACK;
+let board=[], gameOver=false, last=null;
+let humanColor=BLACK, aiColor=WHITE;
+let turn=humanColor;
 
 const cvs=document.getElementById("board"), ctx=cvs.getContext("2d");
 const cell=640/(N+1), off=cell;
 const dx=[1,0,1,1], dy=[0,1,1,-1];
 
-function inBoard(x,y){return x>=0 && x<N && y>=0 && y<N;}
-
+/* ---------------- 绘制棋盘 ---------------- */
 function drawBoard(){
   ctx.fillStyle="#deb887";
   ctx.fillRect(0,0,640,640);
   ctx.strokeStyle="#333";
+
   for(let i=0;i<N;i++){
     const p=off+i*cell;
-    ctx.beginPath(); ctx.moveTo(off,p); ctx.lineTo(off+(N-1)*cell,p); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p,off); ctx.lineTo(p,off+(N-1)*cell); ctx.stroke();
+    ctx.beginPath();ctx.moveTo(off,p);ctx.lineTo(off+(N-1)*cell,p);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p,off);ctx.lineTo(p,off+(N-1)*cell);ctx.stroke();
   }
+
   for(let i=0;i<N;i++)
     for(let j=0;j<N;j++)
       if(board[i][j]!==EMPTY) drawStone(i,j,board[i][j]);
@@ -56,7 +47,7 @@ function drawBoard(){
   if(last){
     ctx.fillStyle="red";
     ctx.beginPath();
-    ctx.arc(off+last.y*cell,off+last.x*cell,cell*0.12,0,Math.PI*2);
+    ctx.arc(off+last.y*cell, off+last.x*cell, cell*0.12, 0, Math.PI*2);
     ctx.fill();
   }
 }
@@ -65,10 +56,14 @@ function drawStone(x,y,p){
   const cx=off+y*cell, cy=off+x*cell, r=cell*0.4;
   const g=ctx.createRadialGradient(cx-r*0.3,cy-r*0.3,r*0.1,cx,cy,r);
   if(p===BLACK){ g.addColorStop(0,"#fff"); g.addColorStop(1,"#000"); }
-  else{ g.addColorStop(0,"#fff"); g.addColorStop(1,"#ccc"); }
-  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  else { g.addColorStop(0,"#fff"); g.addColorStop(1,"#ccc"); }
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
 }
 
+function inBoard(x,y){ return x>=0 && x<N && y>=0 && y<N; }
+
+/* ---------------- 判断五连 ---------------- */
 function isFive(p,x,y){
   for(let d=0;d<4;d++){
     let c=1, nx=x+dx[d], ny=y+dy[d];
@@ -80,99 +75,150 @@ function isFive(p,x,y){
   return false;
 }
 
-// ---------------- 贪心评分函数 ----------------
-function evalPoint(p,x,y){
-  let score = 0;
-
-  board[x][y] = p;
-  if(isFive(p,x,y)){ board[x][y]=EMPTY; return 99999999; }
-  board[x][y] = EMPTY;
-
-  board[x][y] = -p;
-  if(isFive(-p,x,y)){ board[x][y]=EMPTY; return 80000000; }
-  board[x][y] = EMPTY;
-
-  // 进一步评分：统计“连珠模式”
-  score += getScore(p,x,y);
-  score += getScore(-p,x,y) * 0.8; // 防守权重稍低
-  return score;
+/* ---------------- 生成候选走法 ---------------- */
+function genMoves(){
+  let res=[];
+  for(let i=0;i<N;i++)
+    for(let j=0;j<N;j++)
+      if(board[i][j]===EMPTY)
+        res.push({x:i,y:j});
+  return res;
 }
 
-function getScore(p,x,y){
-  let total=0;
+/* ---------------- 评分 evaluate() ---------------- */
+function evaluate(p){
+  let score=0;
 
-  for(let d=0; d<4; d++){
-    let cnt=1, block=0;
+  for(let x=0;x<N;x++){
+    for(let y=0;y<N;y++){
+      if(board[x][y]===EMPTY) continue;
 
-    // 正方向
-    let i=x+dx[d], j=y+dy[d];
-    while(inBoard(i,j) && board[i][j]==p){ cnt++; i+=dx[d]; j+=dy[d]; }
-    if(!inBoard(i,j) || board[i][j]==-p) block++;
+      const me = board[x][y];
 
-    // 反方向
-    i=x-dx[d]; j=y-dy[d];
-    while(inBoard(i,j) && board[i][j]==p){ cnt++; i-=dx[d]; j-=dy[d]; }
-    if(!inBoard(i,j) || board[i][j]==-p) block++;
+      for(let d=0; d<4; d++){
+        let cnt=1, block=0;
 
-    // 根据连子数 + 封堵数评分
-    if(cnt>=5) total+=100000;
-    else if(cnt==4 && block==0) total+=10000;     // 活四
-    else if(cnt==4 && block==1) total+=3000;      // 冲四
-    else if(cnt==3 && block==0) total+=800;       // 活三
-    else if(cnt==3 && block==1) total+=200;       // 眠三
-    else if(cnt==2 && block==0) total+=30;        // 活二
-  }
+        let i=x+dx[d], j=y+dy[d];
+        while(inBoard(i,j)&&board[i][j]==me){ cnt++; i+=dx[d]; j+=dy[d]; }
+        if(!inBoard(i,j)||board[i][j]==-me) block++;
 
-  return total;
-}
+        i=x-dx[d]; j=y-dy[d];
+        while(inBoard(i,j)&&board[i][j]==me){ cnt++; i-=dx[d]; j-=dy[d]; }
+        if(!inBoard(i,j)||board[i][j]==-me) block++;
 
-// ---------------- 贪心 AI：只选当前最高分点 ----------------
-function aiMove(){
-  let bestScore = -1e18;
-  let bestMove = null;
-
-  for(let i=0;i<N;i++){
-    for(let j=0;j<N;j++){
-      if(board[i][j]!==EMPTY) continue;
-
-      let s = evalPoint(aiColor, i, j);
-      if(s > bestScore){
-        bestScore = s;
-        bestMove = {x:i,y:j};
+        // 基础评分
+        if(cnt>=5) score += (me==p ? 1000000 : -1000000);
+        else if(cnt==4 && block==0) score += (me==p ? 10000 : -8000);
+        else if(cnt==4 && block==1) score += (me==p ? 3000 : -2500);
+        else if(cnt==3 && block==0) score += (me==p ? 1500 : -1200);
+        else if(cnt==3 && block==1) score += (me==p ? 300 : -200);
+        else if(cnt==2 && block==0) score += (me==p ? 50 : -40);
       }
     }
   }
-
-  return bestMove;
+  return score;
 }
 
-// ---------------- 落子逻辑 ----------------
+/* ---------------- MINIMAX 深度 = 2 ---------------- */
+function minimax(depth, player){
+  if(depth === 0){
+    return evaluate(aiColor);
+  }
+
+  const moves = genMoves();
+
+  // MAX 层 (AI 落子)
+  if(player === aiColor){
+    let best = -1e18;
+
+    for(let mv of moves){
+      board[mv.x][mv.y] = aiColor;
+
+      if(isFive(aiColor, mv.x, mv.y)){
+        board[mv.x][mv.y] = EMPTY;
+        return 10000000;
+      }
+
+      let v = minimax(depth - 1, humanColor);
+      board[mv.x][mv.y] = EMPTY;
+
+      if(v > best) best = v;
+    }
+    return best;
+  }
+
+  // MIN 层（对手落子）
+  else{
+    let best = 1e18;
+
+    for(let mv of moves){
+      board[mv.x][mv.y] = humanColor;
+
+      if(isFive(humanColor, mv.x, mv.y)){
+        board[mv.x][mv.y] = EMPTY;
+        return -10000000;
+      }
+
+      let v = minimax(depth - 1, aiColor);
+      board[mv.x][mv.y] = EMPTY;
+
+      if(v < best) best = v;
+    }
+    return best;
+  }
+}
+
+/* ---------------- AI 落子：深度固定为 2 ---------------- */
+function aiMove(){
+  const moves = genMoves();
+  let best = null, bestVal = -1e18;
+
+  for(let mv of moves){
+    board[mv.x][mv.y] = aiColor;
+
+    let v = minimax(1, humanColor);
+    board[mv.x][mv.y] = EMPTY;
+
+    if(v > bestVal){
+      bestVal = v;
+      best = mv;
+    }
+  }
+
+  return best;
+}
+
+/* ---------------- 玩家点击 ---------------- */
 cvs.addEventListener("click", e=>{
   if(gameOver || turn!==humanColor) return;
 
   const rect=cvs.getBoundingClientRect();
   const j=Math.round((e.clientX-rect.left-off)/cell);
   const i=Math.round((e.clientY-rect.top-off)/cell);
-  if(!inBoard(i,j) || board[i][j]!==EMPTY) return;
 
-  board[i][j]=humanColor;
-  last={x:i,y:j};
+  if(!inBoard(i,j) || board[i][j] !== EMPTY) return;
+
+  board[i][j] = humanColor;
+  last = {x:i,y:j};
   drawBoard();
 
   if(isFive(humanColor,i,j)){
     document.getElementById("status").textContent="你赢了！";
-    gameOver=true; return;
+    gameOver = true; return;
   }
 
   turn = aiColor;
-  document.getElementById("status").textContent = "AI 思考中...";
+  document.getElementById("status").textContent="AI 思考中...";
 
   setTimeout(()=>{
-    const mv=aiMove();
-    if(!mv){ document.getElementById("status").textContent="平局"; gameOver=true; return; }
+    const mv = aiMove();
+    if(!mv){
+      document.getElementById("status").textContent="平局";
+      gameOver=true; return;
+    }
 
-    board[mv.x][mv.y]=aiColor;
-    last=mv;
+    board[mv.x][mv.y] = aiColor;
+    last = mv;
     drawBoard();
 
     if(isFive(aiColor,mv.x,mv.y)){
@@ -180,25 +226,24 @@ cvs.addEventListener("click", e=>{
       gameOver=true; return;
     }
 
-    turn=humanColor;
+    turn = humanColor;
     document.getElementById("status").textContent="轮到你了";
-  },50);
+  }, 20);
 });
 
-// ---------------- 初始化 ----------------
+/* ---------------- 初始化 ---------------- */
 function init(){
   board = Array.from({length:N},()=>Array(N).fill(0));
-  gameOver=false;
-  turn=humanColor=BLACK;
-  aiColor=WHITE;
+  turn = humanColor;
   last=null;
+  gameOver=false;
   document.getElementById("status").textContent="玩家先手（黑）";
   drawBoard();
 }
 
 document.getElementById("restart").onclick=()=>init();
 init();
-</script>
 
+</script>
 </body>
 </html>
