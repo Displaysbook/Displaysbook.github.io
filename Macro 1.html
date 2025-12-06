@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>南京照相馆下载</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 400px;
+      margin: 60px auto;
+      padding: 0 16px;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .progress-wrap {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    progress {
+      width: 100%;
+    }
+    #progressText {
+      min-width: 52px;
+      text-align: right;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <button id="startBtn">点击下载《南京照相馆》</button>
+
+  <div class="progress-wrap">
+    <progress id="progress" value="0" max="100"></progress>
+    <span id="progressText">0%</span>
+  </div>
+
+  <script>
+    const baseUrl = 'https://yolo.displaysbook.xyz/input.mp4.part';
+    const totalParts = 9;
+
+    const btn = document.getElementById('startBtn');
+    const progressEl = document.getElementById('progress');
+    const progressTextEl = document.getElementById('progressText');
+
+    function setProgress(percent) {
+      if (percent < 0) percent = 0;
+      if (percent > 100) percent = 100;
+      progressEl.value = percent;
+      progressTextEl.textContent = percent.toFixed(1) + '%';
+    }
+
+    async function downloadPart(index) {
+      const url = baseUrl + index;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`分片 ${index} 下载失败，HTTP 状态：${res.status}`);
+      }
+
+      const contentLength = res.headers.get('Content-Length');
+      const partTotal = contentLength ? parseInt(contentLength, 10) : 0;
+
+      const reader = res.body?.getReader ? res.body.getReader() : null;
+
+      // 不支持流式读取时的简单回退
+      if (!reader) {
+        const buf = await res.arrayBuffer();
+        const roughPercent = (index / totalParts) * 100;
+        setProgress(roughPercent);
+        return buf;
+      }
+
+      const chunks = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.byteLength;
+
+        if (partTotal) {
+          const partProgress = received / partTotal;
+          const overall = ((index - 1) + partProgress) / totalParts;
+          setProgress(overall * 100);
+        }
+      }
+
+      if (!partTotal) {
+        const overall = index / totalParts;
+        setProgress(overall * 100);
+      }
+
+      const mergedPart = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        mergedPart.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return mergedPart.buffer;
+    }
+
+    async function start() {
+      btn.disabled = true;
+      btn.textContent = '正在下载...';
+      setProgress(0);
+
+      try {
+        const buffers = [];
+        let totalSize = 0;
+
+        for (let i = 1; i <= totalParts; i++) {
+          const buf = await downloadPart(i);
+          buffers.push(buf);
+          totalSize += buf.byteLength;
+        }
+
+        setProgress(100);
+
+        const merged = new Uint8Array(totalSize);
+        let offset = 0;
+        for (const buf of buffers) {
+          const chunk = new Uint8Array(buf);
+          merged.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+
+        const blob = new Blob([merged], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '南京照相馆.mp4';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        btn.textContent = '点击下载《南京照相馆》';
+      } catch (e) {
+        alert('下载出错：' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '点击下载《南京照相馆》';
+      }
+    }
+
+    btn.addEventListener('click', start);
+  </script>
+</body>
+</html>
