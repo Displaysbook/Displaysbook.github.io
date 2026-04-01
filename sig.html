@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>电子签名（手机版）</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #d1d5db;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(980px, 100%);
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .canvas-wrap {
+      border: 2px dashed var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background:
+        linear-gradient(to bottom, rgba(0,0,0,0) 95%, rgba(0,0,0,0.03) 95%) repeat-y;
+      background-size: 100% 48px;
+      position: relative;
+    }
+
+    canvas {
+      width: 100%;
+      height: 420px;
+      display: block;
+      cursor: crosshair;
+      touch-action: none;
+      background: white;
+    }
+
+    .hint {
+      position: absolute;
+      left: 16px;
+      bottom: 14px;
+      color: #9ca3af;
+      font-size: 13px;
+      pointer-events: none;
+      background: rgba(255,255,255,0.9);
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+
+    label {
+      font-size: 14px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    input[type="range"] {
+      width: 120px;
+    }
+
+    input[type="color"] {
+      width: 40px;
+      height: 36px;
+      border: none;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    button {
+      border: none;
+      background: var(--accent);
+      color: white;
+      border-radius: 12px;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-weight: 650;
+      cursor: pointer;
+      transition: 0.18s ease;
+    }
+
+    button:hover { background: var(--accent-hover); }
+    button.secondary {
+      background: #eef2ff;
+      color: #3730a3;
+    }
+    button.secondary:hover {
+      background: #e0e7ff;
+    }
+    button.danger {
+      background: #fee2e2;
+      color: var(--danger);
+    }
+    button.danger:hover {
+      background: #fecaca;
+      color: var(--danger-hover);
+    }
+
+    .side-title {
+      margin: 0 0 12px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .preview-box {
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      min-height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fcfcfd;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    .preview-box img {
+      max-width: 100%;
+      max-height: 220px;
+      object-fit: contain;
+    }
+
+    .empty {
+      color: #9ca3af;
+      font-size: 14px;
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    .tips {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 14px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      color: #475569;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .download-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .download-links a {
+      text-decoration: none;
+      padding: 11px 14px;
+      border-radius: 12px;
+      background: #ecfeff;
+      color: #155e75;
+      font-weight: 650;
+      border: 1px solid #bae6fd;
+    }
+
+    .meta {
+      margin-top: 18px;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 840px) {
+      body {
+        padding: 0;
+        align-items: stretch;
+        justify-content: stretch;
+        background: #f8fafc;
+      }
+
+      .app {
+        width: 100%;
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px;
+      }
+
+      .panel {
+        border-radius: 20px;
+        padding: 16px;
+      }
+
+      .title {
+        font-size: 22px;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+
+      .canvas-wrap {
+        border-radius: 18px;
+      }
+
+      canvas {
+        height: 52vh;
+        min-height: 360px;
+        max-height: 560px;
+      }
+
+      .hint {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        text-align: center;
+        font-size: 12px;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .control-group {
+        width: 100%;
+        justify-content: space-between;
+        padding: 10px;
+      }
+
+      input[type="range"] {
+        width: 82px;
+      }
+
+      button {
+        width: 100%;
+        min-height: 46px;
+        font-size: 15px;
+      }
+
+      .download-links {
+        flex-direction: column;
+      }
+
+      .download-links a {
+        text-align: center;
+      }
+    }
+
+      canvas {
+        height: 320px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="panel">
+      <h1 class="title">电子签名网页程序 · 手机版</h1>
+      <p class="subtitle">专为手机触屏优化。支持单手签名、全屏式签名区、触摸防误操作、生成预览和下载 PNG。</p>
+
+      <div class="canvas-wrap">
+        <canvas id="signatureCanvas"></canvas>
+        <div class="hint">请在此区域签名</div>
+      </div>
+
+      <div class="toolbar">
+        <div class="control-group">
+          <label for="penColor">笔颜色</label>
+          <input id="penColor" type="color" value="#111111" />
+        </div>
+
+        <div class="control-group">
+          <label for="penSize">笔粗细</label>
+          <input id="penSize" type="range" min="1" max="8" step="0.5" value="2.5" />
+          <span id="penSizeValue">2.5</span>
+        </div>
+
+        <button type="button" id="undoBtn" class="secondary">撤销</button>
+        <button type="button" id="clearBtn" class="danger">清空</button>
+        <button type="button" id="previewBtn">生成预览</button>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2 class="side-title">签名预览</h2>
+      <div class="preview-box" id="previewBox">
+        <div class="empty">还没有生成预览。<br />签完后点击“生成预览”。</div>
+      </div>
+
+      <div class="download-links" id="downloadLinks" style="display:none;">
+        <a id="downloadPng" download="signature.png">下载 PNG</a>
+        <a id="openImage" target="_blank" rel="noopener noreferrer">新窗口打开</a>
+      </div>
+
+      <div class="tips">
+        <strong>使用说明</strong><br />
+        1. 先在左侧签名。<br />
+        2. 点“生成预览”。<br />
+        3. 下载 PNG 后可插入 PDF、Word 或表格。<br />
+        4. 如果签错，可点“撤销”或“清空”。
+      </div>
+
+      <div class="meta" id="statusText">当前状态：未生成预览</div>
+    </aside>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('signatureCanvas');
+    const ctx = canvas.getContext('2d');
+    const penColor = document.getElementById('penColor');
+    const penSize = document.getElementById('penSize');
+    const penSizeValue = document.getElementById('penSizeValue');
+    const undoBtn = document.getElementById('undoBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const previewBtn = document.getElementById('previewBtn');
+    const previewBox = document.getElementById('previewBox');
+    const downloadLinks = document.getElementById('downloadLinks');
+    const downloadPng = document.getElementById('downloadPng');
+    const openImage = document.getElementById('openImage');
+    const statusText = document.getElementById('statusText');
+
+    let drawing = false;
+    let currentStroke = [];
+    let strokes = [];
+
+    function resizeCanvas() {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * ratio);
+      canvas.height = Math.floor(rect.height * ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      redraw();
+    }
+
+    function getPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    }
+
+    function startDrawing(event) {
+      event.preventDefault();
+      drawing = true;
+      currentStroke = [];
+      const point = getPoint(event);
+      currentStroke.push({
+        x: point.x,
+        y: point.y,
+        color: penColor.value,
+        size: parseFloat(penSize.value),
+      });
+    }
+
+    function drawLineSegment(p1, p2) {
+      ctx.strokeStyle = p1.color;
+      ctx.lineWidth = p1.size;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    function drawDot(point) {
+      ctx.fillStyle = point.color;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, point.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function moveDrawing(event) {
+      if (!drawing) return;
+      event.preventDefault();
+      const point = getPoint(event);
+      const newPoint = {
+        x: point.x,
+        y: point.y,
+        color: penColor.value,
+        size: parseFloat(penSize.value),
+      };
+      const lastPoint = currentStroke[currentStroke.length - 1];
+      currentStroke.push(newPoint);
+      drawLineSegment(lastPoint, newPoint);
+    }
+
+    function endDrawing(event) {
+      if (!drawing) return;
+      if (event) event.preventDefault();
+      drawing = false;
+      if (currentStroke.length === 1) {
+        drawDot(currentStroke[0]);
+      }
+      if (currentStroke.length > 0) {
+        strokes.push([...currentStroke]);
+      }
+      currentStroke = [];
+    }
+
+    function redraw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      strokes.forEach((stroke) => {
+        if (stroke.length === 1) {
+          drawDot(stroke[0]);
+          return;
+        }
+        for (let i = 1; i < stroke.length; i++) {
+          drawLineSegment(stroke[i - 1], stroke[i]);
+        }
+      });
+    }
+
+    function isCanvasEmpty() {
+      return strokes.length === 0;
+    }
+
+    function buildTrimmedSignatureDataUrl(padding = 16) {
+      if (isCanvasEmpty()) return null;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      strokes.forEach((stroke) => {
+        stroke.forEach((p) => {
+          const r = p.size;
+          minX = Math.min(minX, p.x - r);
+          minY = Math.min(minY, p.y - r);
+          maxX = Math.max(maxX, p.x + r);
+          maxY = Math.max(maxY, p.y + r);
+        });
+      });
+
+      const width = Math.max(1, Math.ceil(maxX - minX + padding * 2));
+      const height = Math.max(1, Math.ceil(maxY - minY + padding * 2));
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = width;
+      exportCanvas.height = height;
+      const exportCtx = exportCanvas.getContext('2d');
+
+      exportCtx.clearRect(0, 0, width, height);
+      exportCtx.translate(-minX + padding, -minY + padding);
+
+      strokes.forEach((stroke) => {
+        if (stroke.length === 1) {
+          const p = stroke[0];
+          exportCtx.fillStyle = p.color;
+          exportCtx.beginPath();
+          exportCtx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+          exportCtx.fill();
+          return;
+        }
+        for (let i = 1; i < stroke.length; i++) {
+          const p1 = stroke[i - 1];
+          const p2 = stroke[i];
+          exportCtx.strokeStyle = p1.color;
+          exportCtx.lineWidth = p1.size;
+          exportCtx.lineCap = 'round';
+          exportCtx.lineJoin = 'round';
+          exportCtx.beginPath();
+          exportCtx.moveTo(p1.x, p1.y);
+          exportCtx.lineTo(p2.x, p2.y);
+          exportCtx.stroke();
+        }
+      });
+
+      return exportCanvas.toDataURL('image/png');
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture?.(e.pointerId);
+      startDrawing(e);
+    }, { passive: false });
+    canvas.addEventListener('pointermove', moveDrawing, { passive: false });
+    canvas.addEventListener('pointerup', endDrawing, { passive: false });
+    canvas.addEventListener('pointerleave', endDrawing, { passive: false });
+    canvas.addEventListener('pointercancel', endDrawing, { passive: false });
+
+    penSize.addEventListener('input', () => {
+      penSizeValue.textContent = penSize.value;
+    });
+
+    undoBtn.addEventListener('click', () => {
+      strokes.pop();
+      redraw();
+      statusText.textContent = '当前状态：已撤销最近一笔';
+    });
+
+    clearBtn.addEventListener('click', () => {
+      strokes = [];
+      redraw();
+      previewBox.innerHTML = '<div class="empty">还没有生成预览。<br />签完后点击“生成预览”。</div>';
+      downloadLinks.style.display = 'none';
+      statusText.textContent = '当前状态：画布已清空';
+    });
+
+    previewBtn.addEventListener('click', () => {
+      const dataUrl = buildTrimmedSignatureDataUrl();
+      if (!dataUrl) {
+        statusText.textContent = '当前状态：请先签名';
+        return;
+      }
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = '签名预览';
+      previewBox.innerHTML = '';
+      previewBox.appendChild(img);
+      downloadPng.href = dataUrl;
+      openImage.href = dataUrl;
+      downloadLinks.style.display = 'flex';
+      statusText.textContent = '当前状态：已生成预览，可下载 PNG';
+    });
+
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 120));
+    resizeCanvas();
+  </script>
+</body>
+</html>
