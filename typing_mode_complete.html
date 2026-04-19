@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Oxford 3000 快闪记忆 + 打字训练 + TTS</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,0.08);
+      --panel-2: rgba(255,255,255,0.12);
+      --text: #eef2ff;
+      --muted: #b6c0df;
+      --accent: #7c9cff;
+      --good: #73e2a7;
+      --warn: #ffd166;
+      --bad: #ff7b7b;
+      --border: rgba(255,255,255,0.14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(124,156,255,0.20), transparent 26%),
+        radial-gradient(circle at top right, rgba(115,226,167,0.14), transparent 20%),
+        linear-gradient(180deg, #09101c, #11182a 60%, #0d1322);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 18px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 18px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 14px 40px rgba(0,0,0,0.24);
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0; font-size: 30px; }
+    .sub { margin-top: 8px; color: var(--muted); line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .control { display: flex; flex-direction: column; gap: 8px; }
+    label { font-size: 13px; color: var(--muted); font-weight: 700; }
+    select, input[type="number"], input[type="text"], button {
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 15px;
+      width: 100%;
+    }
+    input::placeholder { color: #9dadde; }
+    select option { color: #111827; }
+    button { cursor: pointer; font-weight: 800; }
+    button.primary { background: linear-gradient(135deg, #5b7cff, #87a1ff); border: none; }
+    button.secondary { background: rgba(255,255,255,0.1); }
+    button.good { background: linear-gradient(135deg, #2fa36c, #52c890); border: none; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 999px; background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); font-size: 13px; font-weight: 700;
+    }
+    .viewer {
+      min-height: 62vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .phase {
+      position: absolute; top: 18px; left: 18px;
+      color: var(--muted); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .level {
+      position: absolute; top: 18px; right: 18px;
+      font-size: 13px; color: var(--muted);
+    }
+    .word {
+      font-size: clamp(42px, 7vw, 100px);
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      line-height: 1.15;
+      padding: 0 10px;
+      word-break: break-word;
+    }
+    .meaning {
+      font-size: clamp(24px, 3.5vw, 48px);
+      font-weight: 700;
+      color: #d9e3ff;
+      line-height: 1.35;
+      min-height: 1.4em;
+      padding: 0 20px;
+    }
+    .meta { color: var(--muted); font-size: 15px; }
+    .progress {
+      width: min(720px, 88%);
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      margin-top: 8px;
+    }
+    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #7c9cff, #73e2a7); }
+    .footer { color: var(--muted); font-size: 13px; line-height: 1.7; }
+    .hidden { display: none !important; }
+    .bigbtn { min-width: 120px; }
+    .typing-box {
+      width: min(720px, 92%);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
+    .typing-input {
+      font-size: clamp(18px, 2.3vw, 26px);
+      text-align: center;
+      letter-spacing: 0.05em;
+      padding: 16px 18px;
+      background: rgba(255,255,255,0.1);
+    }
+    .typing-result {
+      min-height: 28px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .ok { color: var(--good); }
+    .bad { color: var(--bad); }
+    .hint { color: var(--warn); }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      width: min(720px, 92%);
+    }
+    .stat {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .stat .k { color: var(--muted); font-size: 12px; }
+    .stat .v { font-size: 24px; font-weight: 900; margin-top: 4px; }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .viewer { min-height: 56vh; }
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+      .word { letter-spacing: 0.04em; }
+      .phase, .level { position: static; }
+      .viewer { padding-top: 20px; }
+      .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Oxford 3000 快闪记忆 / 打字训练 + 英文发音</h1>
+      <div class="sub">支持两种训练：<b>快闪模式</b>与<b>打字模式</b>。在打字模式中，屏幕显示英文单词后，用户必须正确输入同一个单词，系统才会进入下一词。</div>
+    </div>
+
+    <div class="card">
+      <div class="grid">
+        <div class="control" style="grid-column: span 2;">
+          <label>词库文件</label>
+          <div class="row">
+            <input id="fileName" type="text" value="尚未选择词库文件" readonly style="flex:1; min-width: 240px;" />
+            <button id="pickFileBtn" class="secondary">选择 JSON</button>
+            <input id="jsonFileInput" type="file" accept=".json,application/json" class="hidden" />
+          </div>
+        </div>
+        <div class="control">
+          <label>训练模式</label>
+          <select id="modeSelect">
+            <option value="typing">打字模式</option>
+            <option value="flash">快闪模式</option>
+          </select>
+        </div>
+        <div class="control">
+          <label>级别</label>
+          <select id="levelSelect">
+            <option value="ALL">全部</option>
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="B1">B1</option>
+            <option value="B2">B2</option>
+          </select>
+        </div>
+        <div class="control">
+          <label>顺序</label>
+          <select id="orderSelect">
+            <option value="random">随机</option>
+            <option value="sequence">顺序</option>
+          </select>
+        </div>
+        <div class="control flash-only">
+          <label>英文显示(ms)</label>
+          <input id="wordMsInput" type="number" min="100" step="50" value="450" />
+        </div>
+        <div class="control flash-only">
+          <label>中文显示(ms)</label>
+          <input id="zhMsInput" type="number" min="100" step="50" value="650" />
+        </div>
+        <div class="control flash-only">
+          <label>空白间隔(ms)</label>
+          <input id="gapMsInput" type="number" min="0" step="50" value="120" />
+        </div>
+        <div class="control">
+          <label>每轮词数</label>
+          <input id="batchSizeInput" type="number" min="1" step="1" value="30" />
+        </div>
+        <div class="control">
+          <label>语音</label>
+          <select id="voiceSelect">
+            <option value="random">随机英文语音</option>
+            <option value="auto">自动英文语音</option>
+          </select>
+        </div>
+        <div class="control flash-only">
+          <label>播放模式</label>
+          <select id="ttsModeSelect">
+            <option value="word">只读英文</option>
+            <option value="word_twice">英文读两次</option>
+            <option value="word_zh_pause">先英文，停顿，再切中文显示</option>
+          </select>
+        </div>
+        <div class="control flash-only">
+          <label>快闪模式</label>
+          <select id="flashModeSelect">
+            <option value="normal">整词快闪</option>
+            <option value="spelling">字母独立快闪</option>
+            <option value="spelling_word">字母独立 + 整词</option>
+          </select>
+        </div>
+        <div class="control flash-only">
+          <label>单字母显示(ms)</label>
+          <input id="letterMsInput" type="number" min="40" step="20" value="120" />
+        </div>
+        <div class="control typing-only">
+          <label>提交方式</label>
+          <select id="typingSubmitModeSelect">
+            <option value="auto">输入正确后自动下一词</option>
+            <option value="enter">按 Enter 提交</option>
+          </select>
+        </div>
+        <div class="control typing-only">
+          <label>拼写提示</label>
+          <select id="typingHintModeSelect">
+            <option value="off">关闭提示</option>
+            <option value="prefix">显示正确前缀</option>
+            <option value="first">显示首字母</option>
+          </select>
+        </div>
+        <div class="control typing-only">
+          <label>错误后</label>
+          <select id="typingErrorModeSelect">
+            <option value="stay">停留当前词继续打</option>
+            <option value="reveal">显示正确答案</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 16px;">
+        <button id="startBtn" class="primary bigbtn">开始</button>
+        <button id="pauseBtn" class="secondary bigbtn">暂停</button>
+        <button id="nextBtn" class="secondary bigbtn">下一词</button>
+        <button id="restartBtn" class="good bigbtn">重新开始</button>
+        <label class="badge"><input id="showMeaningCheckbox" type="checkbox" checked /> 显示中文</label>
+        <label class="badge"><input id="speakCheckbox" type="checkbox" checked /> 播放英文发音</label>
+        <label class="badge"><input id="fullScreenCheckbox" type="checkbox" /> 开始时全屏</label>
+      </div>
+
+      <div class="row" style="margin-top: 14px;">
+        <span class="badge" id="statusBadge">状态：待开始</span>
+        <span class="badge" id="countBadge">词数：0</span>
+        <span class="badge" id="voiceBadge">语音：随机</span>
+        <span class="badge" id="currentBadge">当前：-</span>
+      </div>
+    </div>
+
+    <div class="card viewer" id="viewerCard">
+      <div class="phase" id="phaseText">READY</div>
+      <div class="level" id="levelText">级别：-</div>
+      <div class="word" id="wordText">请选择词库并开始</div>
+      <div class="meaning" id="meaningText"></div>
+      <div class="meta" id="metaText">打字模式下：看到英文单词后，必须正确输入同一个单词，系统才会继续。</div>
+
+      <div id="typingArea" class="typing-box">
+        <input id="typingInput" class="typing-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="请把看到的英文单词打出来" />
+        <div id="typingResult" class="typing-result"></div>
+      </div>
+
+      <div class="stats typing-only" id="typingStats">
+        <div class="stat"><div class="k">正确</div><div class="v" id="correctCountText">0</div></div>
+        <div class="stat"><div class="k">错误</div><div class="v" id="wrongCountText">0</div></div>
+        <div class="stat"><div class="k">正确率</div><div class="v" id="accuracyText">0%</div></div>
+        <div class="stat"><div class="k">错词数</div><div class="v" id="wrongWordCountText">0</div></div>
+      </div>
+
+      <div class="progress"><div class="bar" id="progressBar"></div></div>
+    </div>
+
+    <div class="card footer">
+      建议：如果你要机械训练，就把模式固定为“打字模式”，顺序选“顺序”，每轮词数固定为 30。这样你每天只重复同一个动作：<code>看单词 → 打出来 → 对/错反馈 → 下一词</code>。
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      rawData: null,
+      words: [],
+      filtered: [],
+      currentIndex: -1,
+      running: false,
+      timer: null,
+      phase: 'idle',
+      voices: [],
+      selectedVoiceURI: 'random',
+      sequencePointer: 0,
+      batchCount: 0,
+      hasUserGesture: false,
+      correctCount: 0,
+      wrongCount: 0,
+      wrongWords: [],
+      currentTypingWord: null,
+      currentWordResolved: false,
+      typingLocked: false,
+    };
+
+    const $ = id => document.getElementById(id);
+    const els = {
+      fileName: $('fileName'),
+      pickFileBtn: $('pickFileBtn'),
+      jsonFileInput: $('jsonFileInput'),
+      modeSelect: $('modeSelect'),
+      levelSelect: $('levelSelect'),
+      orderSelect: $('orderSelect'),
+      wordMsInput: $('wordMsInput'),
+      zhMsInput: $('zhMsInput'),
+      gapMsInput: $('gapMsInput'),
+      batchSizeInput: $('batchSizeInput'),
+      voiceSelect: $('voiceSelect'),
+      ttsModeSelect: $('ttsModeSelect'),
+      flashModeSelect: $('flashModeSelect'),
+      letterMsInput: $('letterMsInput'),
+      typingSubmitModeSelect: $('typingSubmitModeSelect'),
+      typingHintModeSelect: $('typingHintModeSelect'),
+      typingErrorModeSelect: $('typingErrorModeSelect'),
+      startBtn: $('startBtn'),
+      pauseBtn: $('pauseBtn'),
+      nextBtn: $('nextBtn'),
+      restartBtn: $('restartBtn'),
+      showMeaningCheckbox: $('showMeaningCheckbox'),
+      speakCheckbox: $('speakCheckbox'),
+      fullScreenCheckbox: $('fullScreenCheckbox'),
+      statusBadge: $('statusBadge'),
+      countBadge: $('countBadge'),
+      voiceBadge: $('voiceBadge'),
+      currentBadge: $('currentBadge'),
+      phaseText: $('phaseText'),
+      levelText: $('levelText'),
+      wordText: $('wordText'),
+      meaningText: $('meaningText'),
+      metaText: $('metaText'),
+      progressBar: $('progressBar'),
+      typingArea: $('typingArea'),
+      typingInput: $('typingInput'),
+      typingResult: $('typingResult'),
+      correctCountText: $('correctCountText'),
+      wrongCountText: $('wrongCountText'),
+      accuracyText: $('accuracyText'),
+      wrongWordCountText: $('wrongWordCountText'),
+    };
+
+    function clearTimer() {
+      if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
+      }
+    }
+
+    function normalizeWord(text) {
+      return String(text || '')
+        .replace(/\s+/g, ' ')
+        .replace(/[0-9]+/g, '')
+        .replace(/\s*\([^)]*\)/g, '')
+        .trim();
+    }
+
+    function normalizeCompare(text) {
+      return normalizeWord(text).toLowerCase();
+    }
+
+    function flattenWords(data) {
+      const out = [];
+      ['A1', 'A2', 'B1', 'B2'].forEach(level => {
+        const list = Array.isArray(data[level]) ? data[level] : [];
+        list.forEach(item => {
+          const headword = item.headword_normalized || item.headword || '';
+          const cleaned = normalizeWord(headword);
+          if (!cleaned) return;
+          out.push({
+            level,
+            headword: cleaned,
+            zh: String(item.zh_CN || item.zh || '').trim(),
+            pos: String(item.pos || '').trim(),
+          });
+        });
+      });
+      return out.filter(x => /^[A-Za-z][A-Za-z\-\s']*$/.test(x.headword) && x.zh);
+    }
+
+    function applyFilter() {
+      const level = els.levelSelect.value;
+      state.filtered = state.words.filter(w => level === 'ALL' ? true : w.level === level);
+      state.currentIndex = -1;
+      state.sequencePointer = 0;
+      state.batchCount = 0;
+      state.correctCount = 0;
+      state.wrongCount = 0;
+      state.wrongWords = [];
+      state.currentTypingWord = null;
+      state.currentWordResolved = false;
+      updateProgress();
+      updateTypingStats();
+      els.countBadge.textContent = `词数：${state.filtered.length}`;
+      if (!state.filtered.length) {
+        els.wordText.textContent = '当前筛选下没有可用单词';
+        els.meaningText.textContent = '';
+        els.metaText.textContent = '请更换级别或重新加载词库。';
+      }
+    }
+
+    function getCurrentWord() {
+      return state.filtered[state.currentIndex] || null;
+    }
+
+    function chooseNextIndex() {
+      if (!state.filtered.length) return -1;
+      if (els.orderSelect.value === 'sequence') {
+        const idx = state.sequencePointer % state.filtered.length;
+        state.sequencePointer += 1;
+        return idx;
+      }
+      return Math.floor(Math.random() * state.filtered.length);
+    }
+
+    function updateProgress() {
+      const batchSize = Math.max(1, parseInt(els.batchSizeInput.value, 10) || 30);
+      const percent = Math.min(100, (state.batchCount / batchSize) * 100);
+      els.progressBar.style.width = `${percent}%`;
+      els.currentBadge.textContent = `当前：${state.batchCount}/${batchSize}`;
+    }
+
+    function updateTypingStats() {
+      const total = state.correctCount + state.wrongCount;
+      const accuracy = total ? Math.round((state.correctCount / total) * 100) : 0;
+      els.correctCountText.textContent = state.correctCount;
+      els.wrongCountText.textContent = state.wrongCount;
+      els.accuracyText.textContent = `${accuracy}%`;
+      els.wrongWordCountText.textContent = state.wrongWords.length;
+    }
+
+    function setPhase(phase, text) {
+      state.phase = phase;
+      els.phaseText.textContent = text;
+    }
+
+    function stopSpeech() {
+      try { speechSynthesis.cancel(); } catch (_) {}
+    }
+
+    function getEnglishVoices() {
+      return state.voices.filter(v => /en/i.test(v.lang || '') || /english/i.test(v.name || ''));
+    }
+
+    function getSelectedVoice() {
+      const englishVoices = getEnglishVoices();
+      const pool = englishVoices.length ? englishVoices : state.voices;
+      if (!pool.length) return null;
+      if (state.selectedVoiceURI === 'random') {
+        return pool[Math.floor(Math.random() * pool.length)] || pool[0] || null;
+      }
+      if (state.selectedVoiceURI && state.selectedVoiceURI !== 'auto') {
+        return pool.find(v => v.voiceURI === state.selectedVoiceURI) || null;
+      }
+      return englishVoices[0] || pool[0] || null;
+    }
+
+    function waitMs(ms) {
+      return new Promise(resolve => {
+        clearTimer();
+        state.timer = setTimeout(resolve, Math.max(0, ms));
+      });
+    }
+
+    function speakText(text, options = {}) {
+      return new Promise(resolve => {
+        if (!els.speakCheckbox.checked || !text || !('speechSynthesis' in window)) {
+          resolve({ played: false, voice: null, durationMs: 0 });
+          return;
+        }
+        const utter = new SpeechSynthesisUtterance(text);
+        const voice = getSelectedVoice();
+        if (voice) utter.voice = voice;
+        utter.lang = voice?.lang || 'en-US';
+        utter.rate = options.rate || 1.0;
+        utter.pitch = options.pitch || 1.0;
+        const startedAt = performance.now();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          resolve({ played: true, voice, durationMs: Math.max(0, performance.now() - startedAt) });
+        };
+        utter.onend = finish;
+        utter.onerror = finish;
+        stopSpeech();
+        try {
+          speechSynthesis.speak(utter);
+        } catch (_) {
+          finish();
+        }
+      });
+    }
+
+    function speakWord(word, options = {}) {
+      return speakText(word, options);
+    }
+
+    function renderSpellingFrame(display, item, index, total) {
+      els.levelText.textContent = `级别：${item.level}${item.pos ? ' · ' + item.pos : ''}`;
+      els.wordText.textContent = display;
+      els.meaningText.textContent = '';
+      els.metaText.textContent = `字母快闪 ${index}/${total}：像人类拼读一样，看到一个字母，听一个字母。`;
+      setPhase('spelling', 'LETTER');
+    }
+
+    function normalizeLetterForSpeech(ch) {
+      if (ch === '-') return 'hyphen';
+      if (ch === "'") return 'apostrophe';
+      return ch;
+    }
+
+    async function playSpellingFlash(item) {
+      const text = item.headword;
+      const tokens = Array.from(text).filter(Boolean);
+      const letterMs = Math.max(40, parseInt(els.letterMsInput.value, 10) || 120);
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        renderSpellingFrame(token === ' ' ? '␠' : token, item, i + 1, tokens.length);
+        let voiceUsed = null;
+        if (els.speakCheckbox.checked) {
+          const spoken = await speakText(normalizeLetterForSpeech(token), { rate: 0.9 });
+          voiceUsed = spoken.voice || null;
+          if (voiceUsed) {
+            els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机 · ' : ''}${voiceUsed.name}`;
+          }
+          if (!state.running || state.phase !== 'spelling') return false;
+        }
+        await waitMs(letterMs);
+        if (!state.running || state.phase !== 'spelling') return false;
+      }
+      return true;
+    }
+
+    function displayWordCard(item) {
+      els.levelText.textContent = `级别：${item.level}${item.pos ? ' · ' + item.pos : ''}`;
+      els.wordText.textContent = item.headword;
+      els.meaningText.textContent = '';
+      els.metaText.textContent = '专注看英文，建立瞬时视觉印象。';
+      setPhase('word', 'WORD');
+    }
+
+    function displayMeaningCard(item) {
+      els.wordText.textContent = item.headword;
+      els.meaningText.textContent = els.showMeaningCheckbox.checked ? item.zh : '';
+      els.metaText.textContent = els.showMeaningCheckbox.checked ? '看到中文后，尝试再次在脑中回忆英文发音。' : '中文显示已关闭。';
+      setPhase('meaning', 'MEANING');
+    }
+
+    function displayBlank() {
+      els.wordText.textContent = '•';
+      els.meaningText.textContent = '';
+      els.metaText.textContent = '准备进入下一词';
+      setPhase('gap', 'GAP');
+    }
+
+    function setTypingResult(text, cls = '') {
+      els.typingResult.className = `typing-result ${cls}`.trim();
+      els.typingResult.textContent = text;
+    }
+
+    function getHintText(user, correct) {
+      const mode = els.typingHintModeSelect.value;
+      if (mode === 'off') return '';
+      if (mode === 'first') return `提示：首字母是 ${correct.slice(0, 1)}`;
+      let prefix = '';
+      for (let i = 0; i < Math.min(user.length, correct.length); i++) {
+        if (user[i] === correct[i]) prefix += correct[i];
+        else break;
+      }
+      return prefix ? `前缀正确：${prefix}` : '继续输入';
+    }
+
+    function focusTypingInput() {
+      if (els.modeSelect.value === 'typing') {
+        setTimeout(() => els.typingInput.focus(), 30);
+      }
+    }
+
+    async function startTypingRound(resetBatch = false) {
+      clearTimer();
+      stopSpeech();
+      state.running = true;
+      state.typingLocked = false;
+      if (resetBatch) {
+        state.batchCount = 0;
+        state.sequencePointer = 0;
+        state.correctCount = 0;
+        state.wrongCount = 0;
+        state.wrongWords = [];
+        updateProgress();
+        updateTypingStats();
+      }
+      const batchSize = Math.max(1, parseInt(els.batchSizeInput.value, 10) || 30);
+      if (state.batchCount >= batchSize) {
+        state.running = false;
+        els.statusBadge.textContent = '状态：本轮完成';
+        setPhase('done', 'DONE');
+        els.metaText.textContent = '打字训练已完成。点击“重新开始”继续。';
+        setTypingResult('本轮完成', 'ok');
+        return;
+      }
+
+      const nextIndex = chooseNextIndex();
+      if (nextIndex < 0) {
+        els.statusBadge.textContent = '状态：没有可用单词';
+        return;
+      }
+
+      state.currentIndex = nextIndex;
+      state.batchCount += 1;
+      updateProgress();
+
+      const item = getCurrentWord();
+      if (!item) return;
+      state.currentTypingWord = item;
+      state.currentWordResolved = false;
+
+      els.statusBadge.textContent = '状态：打字中';
+      els.levelText.textContent = `级别：${item.level}${item.pos ? ' · ' + item.pos : ''}`;
+      els.wordText.textContent = item.headword;
+      els.meaningText.textContent = els.showMeaningCheckbox.checked ? item.zh : '';
+      els.metaText.textContent = '看到英文后，必须把同一个单词完整打出来。';
+      setPhase('typing', 'TYPE');
+      els.typingInput.value = '';
+      els.typingInput.disabled = false;
+      setTypingResult('', '');
+      focusTypingInput();
+
+      if (els.speakCheckbox.checked) {
+        const spoken = await speakWord(item.headword, { rate: 0.92 });
+        if (spoken.voice) {
+          els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机 · ' : ''}${spoken.voice.name}`;
+        }
+      }
+    }
+
+    function handleTypingInput() {
+      if (!state.running || els.modeSelect.value !== 'typing' || !state.currentTypingWord || state.typingLocked) return;
+      const user = normalizeCompare(els.typingInput.value);
+      const correct = normalizeCompare(state.currentTypingWord.headword);
+      const submitMode = els.typingSubmitModeSelect.value;
+
+      if (!user) {
+        setTypingResult('', '');
+        return;
+      }
+
+      if (submitMode === 'auto') {
+        if (correct.startsWith(user)) {
+          if (user === correct) {
+            handleTypingSuccess();
+          } else {
+            setTypingResult('继续输入…', 'hint');
+          }
+        } else {
+          state.wrongCount += 1;
+          updateTypingStats();
+          const hint = getHintText(user, correct);
+          if (els.typingErrorModeSelect.value === 'reveal') {
+            setTypingResult(`错误，正确答案：${state.currentTypingWord.headword}`, 'bad');
+          } else {
+            setTypingResult(hint || '拼写不对，继续修正', 'bad');
+          }
+        }
+      } else {
+        const hint = getHintText(user, correct);
+        setTypingResult(hint, hint ? 'hint' : '');
+      }
+    }
+
+    function handleTypingEnterSubmit(event) {
+      if (event.key !== 'Enter') return;
+      if (!state.running || els.modeSelect.value !== 'typing' || !state.currentTypingWord || state.typingLocked) return;
+      event.preventDefault();
+      const user = normalizeCompare(els.typingInput.value);
+      const correct = normalizeCompare(state.currentTypingWord.headword);
+      if (user === correct) {
+        handleTypingSuccess();
+      } else {
+        state.wrongCount += 1;
+        updateTypingStats();
+        if (!state.wrongWords.includes(correct)) state.wrongWords.push(correct);
+        if (els.typingErrorModeSelect.value === 'reveal') {
+          setTypingResult(`错误，正确答案：${state.currentTypingWord.headword}`, 'bad');
+        } else {
+          setTypingResult(getHintText(user, correct) || '错误，请继续输入后再按 Enter', 'bad');
+        }
+        focusTypingInput();
+      }
+    }
+
+    function handleTypingSuccess() {
+      if (state.typingLocked || !state.currentTypingWord) return;
+      state.typingLocked = true;
+      state.correctCount += 1;
+      updateTypingStats();
+      setTypingResult('✅ 正确，进入下一词', 'ok');
+      els.typingInput.disabled = true;
+      const wrongIndex = state.wrongWords.indexOf(normalizeCompare(state.currentTypingWord.headword));
+      if (wrongIndex >= 0) state.wrongWords.splice(wrongIndex, 1);
+      updateTypingStats();
+      clearTimer();
+      state.timer = setTimeout(() => {
+        if (state.running && els.modeSelect.value === 'typing') {
+          startTypingRound(false);
+        }
+      }, 450);
+    }
+
+    async function advanceFlashCycle() {
+      clearTimer();
+      stopSpeech();
+
+      const batchSize = Math.max(1, parseInt(els.batchSizeInput.value, 10) || 30);
+      if (state.batchCount >= batchSize) {
+        state.running = false;
+        els.statusBadge.textContent = '状态：本轮完成';
+        setPhase('done', 'DONE');
+        els.metaText.textContent = '本轮已结束。点击“重新开始”或“开始”继续。';
+        return;
+      }
+
+      const nextIndex = chooseNextIndex();
+      if (nextIndex < 0) {
+        els.statusBadge.textContent = '状态：没有可用单词';
+        return;
+      }
+
+      state.currentIndex = nextIndex;
+      state.batchCount += 1;
+      updateProgress();
+
+      const item = getCurrentWord();
+      if (!item) return;
+
+      const wordMs = Math.max(100, parseInt(els.wordMsInput.value, 10) || 450);
+      const zhMs = Math.max(100, parseInt(els.zhMsInput.value, 10) || 650);
+      const gapMs = Math.max(0, parseInt(els.gapMsInput.value, 10) || 120);
+      const ttsMode = els.ttsModeSelect.value;
+
+      els.statusBadge.textContent = '状态：播放中';
+      const flashMode = els.flashModeSelect.value;
+      if (flashMode === 'spelling' || flashMode === 'spelling_word') {
+        const ok = await playSpellingFlash(item);
+        if (!ok) return;
+      }
+      displayWordCard(item);
+      let voiceUsed = null;
+      if (els.speakCheckbox.checked) {
+        const first = await speakWord(item.headword, { rate: 0.92 });
+        voiceUsed = first.voice || voiceUsed;
+        if (!state.running || state.phase !== 'word') return;
+        if (ttsMode === 'word_twice') {
+          const second = await speakWord(item.headword, { rate: 0.92 });
+          voiceUsed = second.voice || voiceUsed;
+          if (!state.running || state.phase !== 'word') return;
+        }
+      }
+      if (voiceUsed) {
+        els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机 · ' : ''}${voiceUsed.name}`;
+      }
+      await waitMs(wordMs);
+      if (!state.running) return;
+
+      displayMeaningCard(item);
+      if (ttsMode === 'word_zh_pause' && els.speakCheckbox.checked) {
+        const replay = await speakWord(item.headword, { rate: 0.92 });
+        voiceUsed = replay.voice || voiceUsed;
+        if (voiceUsed) {
+          els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机 · ' : ''}${voiceUsed.name}`;
+        }
+        if (!state.running || state.phase !== 'meaning') return;
+      }
+      await waitMs(zhMs);
+      if (!state.running) return;
+
+      displayBlank();
+      await waitMs(gapMs);
+      if (state.running) advanceFlashCycle();
+    }
+
+    function startPlayback(resetBatch = false) {
+      if (!state.filtered.length) {
+        alert('请先选择 JSON 词库文件，或确认当前级别下有单词。');
+        return;
+      }
+      if (resetBatch) {
+        state.batchCount = 0;
+        state.sequencePointer = 0;
+        updateProgress();
+      }
+      if (els.fullScreenCheckbox.checked && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      state.running = true;
+      els.statusBadge.textContent = els.modeSelect.value === 'typing' ? '状态：打字中' : '状态：播放中';
+      if (els.modeSelect.value === 'typing') {
+        startTypingRound(resetBatch);
+      } else {
+        advanceFlashCycle();
+      }
+    }
+
+    function pausePlayback() {
+      state.running = false;
+      state.typingLocked = false;
+      clearTimer();
+      stopSpeech();
+      els.statusBadge.textContent = '状态：已暂停';
+      setPhase('pause', 'PAUSE');
+      els.metaText.textContent = '已暂停。点击“开始”继续。';
+      els.typingInput.disabled = true;
+    }
+
+    function nextOne() {
+      clearTimer();
+      stopSpeech();
+      state.running = false;
+      if (els.modeSelect.value === 'typing') {
+        startTypingRound(false);
+        return;
+      }
+      const nextIndex = chooseNextIndex();
+      if (nextIndex < 0) return;
+      state.currentIndex = nextIndex;
+      const item = getCurrentWord();
+      if (!item) return;
+      displayWordCard(item);
+      if (els.speakCheckbox.checked) {
+        speakWord(item.headword, { rate: 0.92 }).then(result => {
+          if (result.voice) {
+            els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机 · ' : ''}${result.voice.name}`;
+          }
+        });
+      }
+      clearTimer();
+      state.timer = setTimeout(() => displayMeaningCard(item), Math.max(100, parseInt(els.wordMsInput.value, 10) || 450));
+      els.statusBadge.textContent = '状态：单步预览';
+    }
+
+    function loadVoices() {
+      const voices = speechSynthesis.getVoices() || [];
+      state.voices = voices;
+      els.voiceSelect.innerHTML = `
+        <option value="random">随机英文语音</option>
+        <option value="auto">自动英文语音</option>
+      `;
+      voices.filter(v => /en/i.test(v.lang || '') || /english/i.test(v.name || '')).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voiceURI;
+        opt.textContent = `${v.name} (${v.lang})`;
+        els.voiceSelect.appendChild(opt);
+      });
+      const voice = getSelectedVoice();
+      els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机' : (voice ? voice.name : '默认')}`;
+    }
+
+    async function loadJsonFile(file) {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const words = flattenWords(data);
+      if (!words.length) throw new Error('JSON 中未找到可用单词');
+      state.rawData = data;
+      state.words = words;
+      els.fileName.value = file.name;
+      applyFilter();
+      els.wordText.textContent = '词库已加载';
+      els.meaningText.textContent = `${state.filtered.length} 个可用词条`;
+      els.metaText.textContent = '现在可以点击“开始”，进入打字或快闪训练。';
+    }
+
+    function syncModeUI() {
+      const isTyping = els.modeSelect.value === 'typing';
+      document.querySelectorAll('.typing-only').forEach(el => el.classList.toggle('hidden', !isTyping));
+      document.querySelectorAll('.flash-only').forEach(el => el.classList.toggle('hidden', isTyping));
+      els.typingArea.classList.toggle('hidden', !isTyping);
+      if (isTyping) {
+        els.metaText.textContent = '打字模式：看到英文后，正确打出来才会进入下一词。';
+        focusTypingInput();
+      } else {
+        els.metaText.textContent = '快闪模式：连续显示字母、整词和中文。';
+      }
+    }
+
+    els.pickFileBtn.addEventListener('click', () => els.jsonFileInput.click());
+    els.jsonFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        await loadJsonFile(file);
+      } catch (err) {
+        alert('加载失败：' + err.message);
+      }
+    });
+
+    els.levelSelect.addEventListener('change', () => {
+      applyFilter();
+      pausePlayback();
+    });
+    els.orderSelect.addEventListener('change', () => applyFilter());
+    els.modeSelect.addEventListener('change', () => {
+      pausePlayback();
+      syncModeUI();
+    });
+    els.voiceSelect.addEventListener('change', () => {
+      state.selectedVoiceURI = els.voiceSelect.value;
+      const voice = getSelectedVoice();
+      els.voiceBadge.textContent = `语音：${state.selectedVoiceURI === 'random' ? '随机' : (voice ? voice.name : '默认')}`;
+    });
+
+    els.typingInput.addEventListener('input', handleTypingInput);
+    els.typingInput.addEventListener('keydown', handleTypingEnterSubmit);
+
+    els.startBtn.addEventListener('click', () => {
+      state.hasUserGesture = true;
+      if (!state.running) startPlayback(false);
+    });
+    els.pauseBtn.addEventListener('click', pausePlayback);
+    els.nextBtn.addEventListener('click', () => {
+      state.hasUserGesture = true;
+      nextOne();
+    });
+    els.restartBtn.addEventListener('click', () => {
+      state.hasUserGesture = true;
+      startPlayback(true);
+    });
+
+    document.addEventListener('click', () => {
+      state.hasUserGesture = true;
+      focusTypingInput();
+    }, { once: true });
+
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    } else {
+      els.voiceBadge.textContent = '语音：当前浏览器不支持';
+      els.speakCheckbox.checked = false;
+      els.speakCheckbox.disabled = true;
+    }
+
+    updateProgress();
+    updateTypingStats();
+    syncModeUI();
+  </script>
+</body>
+</html>
